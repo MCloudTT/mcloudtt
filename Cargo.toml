@@ -8,4 +8,4 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1.37"
-tracing-subscriber = "0.2.0"
+tracing-subscriber = "0.3.16"
