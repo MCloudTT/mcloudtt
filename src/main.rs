@@ -15,9 +15,7 @@ const TCP_LISTENER_ADDR: &str = "127.0.0.1:1883";
 async fn main() {
     tracing_subscriber::fmt::init();
     info!("Starting MCloudTT!");
-    let listener = TcpListener::bind(TCP_LISTENER_ADDR)
-        .await
-        .unwrap();
+    let listener = TcpListener::bind(TCP_LISTENER_ADDR).await.unwrap();
     while let Ok((mut stream, addr)) = listener.accept().await {
         info!("Peer connected: {:?}", addr);
         tokio::spawn(handle_raw_tcp_stream(stream, addr));
@@ -82,6 +80,7 @@ async fn handle_connect_packet(stream: &mut TcpStream, peer: &SocketAddr, packet
 /// log which client disconneced
 async fn handle_disconnect_packet(packet: &DisconnectPacket, peer: &SocketAddr) {
     let reason = packet.reason_code;
+    // handle DisconnectWithWill?
     info!("{:?} disconnect with reason-code: {:?}", peer, reason);
 }
 /// respond to client ping
