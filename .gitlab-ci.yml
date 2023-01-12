@@ -6,3 +6,4 @@ stable:cargo:
     - cargo build --release
     - cargo build
     - cargo doc
+    - cargo fmt --all -- --check
