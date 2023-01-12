@@ -1,9 +1,10 @@
 use bytes::BytesMut;
-use futures_util::stream::StreamExt;
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
-use mqtt_v5::types::{ConnectAckPacket, ConnectReason, Packet, ProtocolVersion};
+use mqtt_v5::types::properties::{MaximumPacketSize, MaximumQos};
+use mqtt_v5::types::{ConnectAckPacket, ConnectReason, Packet, ProtocolVersion, QoS};
 use std::io;
+use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, info};
 const WEBSOCKET_TCP_LISTENER_ADDR: &str = "127.0.0.1:1883";
@@ -15,20 +16,25 @@ async fn main() {
         .await
         .unwrap();
     while let Ok((mut stream, addr)) = listener.accept().await {
-        println!("Connected {:?}", addr);
+        info!("Connected {:?}", addr);
         // tokio::spawn(accept_connection(stream));
         tokio::spawn(handle_raw_tcp_stream(stream));
     }
 }
 async fn read_stream(mut stream: &mut TcpStream) {
-    let mut buf = [0; 64];
-    match stream.try_read(&mut buf) {
+    let mut buf = [0; 265];
+    let peer = stream.peer_addr().unwrap();
+    match stream.read(&mut buf).await {
         Ok(0) => {}
         Ok(n) => {
-            info!("{:?}", buf);
+            // info!("{:?}", buf);
             let packet =
                 decode_mqtt(&mut BytesMut::from(buf.as_slice()), ProtocolVersion::V500).unwrap();
-            info!("Received packet: {:?}", packet);
+            info!("From {:?}: Received packet: {:?}", peer, packet);
+            match packet {
+                Some(Packet::Connect(p)) => write_to_stream(&mut stream).await,
+                _ => info!("No known packet-type"),
+            }
         }
         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
             debug!("Would block");
@@ -42,9 +48,9 @@ async fn write_to_stream(stream: &mut TcpStream) {
         reason_code: ConnectReason::Success,
         session_expiry_interval: None,
         receive_maximum: None,
-        maximum_qos: None,
+        maximum_qos: Some(MaximumQos(QoS::AtMostOnce)),
         retain_available: None,
-        maximum_packet_size: None,
+        maximum_packet_size: Some(MaximumPacketSize(256)),
         assigned_client_identifier: None,
         topic_alias_maximum: None,
         reason_string: None,
@@ -72,13 +78,10 @@ async fn write_to_stream(stream: &mut TcpStream) {
 }
 async fn handle_raw_tcp_stream(mut stream: TcpStream) {
     loop {
-        tokio::select! {
-            _ = stream.readable() => {
-                read_stream(&mut stream).await;
-            }
-            _ = stream.writable() => {
-                write_to_stream(&mut stream).await;
-            }
-        }
+        stream.readable().await;
+        read_stream(&mut stream).await;
+        // _ = stream.writable() => {
+        //     write_to_stream(&mut stream).await;
+        // }
     }
 }
