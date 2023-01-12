@@ -4,6 +4,7 @@ use mqtt_v5::encoder::encode_mqtt;
 use mqtt_v5::types::properties::{MaximumPacketSize, MaximumQos};
 use mqtt_v5::types::{ConnectAckPacket, ConnectReason, Packet, ProtocolVersion, QoS};
 use std::io;
+use std::net::SocketAddr;
 use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, info};
@@ -16,12 +17,11 @@ async fn main() {
         .await
         .unwrap();
     while let Ok((mut stream, addr)) = listener.accept().await {
-        info!("Connected {:?}", addr);
-        // tokio::spawn(accept_connection(stream));
-        tokio::spawn(handle_raw_tcp_stream(stream));
+        info!("Peer connected: {:?}", addr);
+        tokio::spawn(handle_raw_tcp_stream(stream, addr));
     }
 }
-async fn read_stream(mut stream: &mut TcpStream) {
+async fn handle_packet(mut stream: &mut TcpStream) {
     let mut buf = [0; 265];
     let peer = stream.peer_addr().unwrap();
     match stream.read(&mut buf).await {
@@ -31,8 +31,10 @@ async fn read_stream(mut stream: &mut TcpStream) {
             let packet =
                 decode_mqtt(&mut BytesMut::from(buf.as_slice()), ProtocolVersion::V500).unwrap();
             info!("From {:?}: Received packet: {:?}", peer, packet);
+            // some fnuctions will need the contents of the received packet
             match packet {
-                Some(Packet::Connect(p)) => write_to_stream(&mut stream).await,
+                Some(Packet::Connect(p)) => handle_connect_packet(stream).await,
+                Some(Packet::PingRequest) => handle_pingreq_packet(stream).await,
                 _ => info!("No known packet-type"),
             }
         }
@@ -42,7 +44,8 @@ async fn read_stream(mut stream: &mut TcpStream) {
         Err(e) => {}
     }
 }
-async fn write_to_stream(stream: &mut TcpStream) {
+
+async fn handle_connect_packet(stream: &mut TcpStream) {
     let ack = Packet::ConnectAck(ConnectAckPacket {
         session_present: false,
         reason_code: ConnectReason::Success,
@@ -64,8 +67,16 @@ async fn write_to_stream(stream: &mut TcpStream) {
         authentication_method: None,
         authentication_data: None,
     });
+    write_to_stream(stream, &ack).await;
+}
+async fn handle_pingreq_packet(stream: &mut TcpStream) {
+    let ping_response = Packet::PingResponse;
+    write_to_stream(stream, &ping_response).await;
+}
+async fn write_to_stream(stream: &mut TcpStream, packet: &Packet) {
     let mut buf = BytesMut::new();
-    encode_mqtt(&ack, &mut buf, ProtocolVersion::V500);
+    encode_mqtt(packet, &mut buf, ProtocolVersion::V500);
+    let _ = stream.writable().await;
     match stream.try_write(&buf) {
         Ok(e) => {
             info!("Written {} bytes", e);
@@ -76,12 +87,12 @@ async fn write_to_stream(stream: &mut TcpStream) {
         Err(_) => {}
     }
 }
-async fn handle_raw_tcp_stream(mut stream: TcpStream) {
+async fn handle_raw_tcp_stream(mut stream: TcpStream, addr: SocketAddr) {
     loop {
-        stream.readable().await;
-        read_stream(&mut stream).await;
-        // _ = stream.writable() => {
-        //     write_to_stream(&mut stream).await;
-        // }
+        match stream.readable().await {
+            Ok(_) => handle_packet(&mut stream).await,
+            // TODO: replace info! macro
+            Err(ref e) => info!("ERROR {:?} connection: {:?}", addr, e),
+        }
     }
 }
