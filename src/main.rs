@@ -4,9 +4,8 @@ use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
 use mqtt_v5::types::{ConnectAckPacket, ConnectReason, Packet, ProtocolVersion};
 use std::io;
-use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
-use tracing::info;
+use tracing::{debug, info};
 const WEBSOCKET_TCP_LISTENER_ADDR: &str = "127.0.0.1:1883";
 #[tokio::main]
 async fn main() {
@@ -18,7 +17,7 @@ async fn main() {
     while let Ok((mut stream, addr)) = listener.accept().await {
         println!("Connected {:?}", addr);
         // tokio::spawn(accept_connection(stream));
-        tokio::spawn(handle_raw_tcp_stream(&mut stream));
+        tokio::spawn(handle_raw_tcp_stream(stream));
     }
 }
 async fn read_stream(mut stream: &mut TcpStream) {
@@ -32,11 +31,9 @@ async fn read_stream(mut stream: &mut TcpStream) {
             info!("Received packet: {:?}", packet);
         }
         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-            dbg!("Would block");
+            debug!("Would block");
         }
-        Err(e) => {
-            dbg!(e);
-        }
+        Err(e) => {}
     }
 }
 async fn write_to_stream(stream: &mut TcpStream) {
@@ -68,21 +65,19 @@ async fn write_to_stream(stream: &mut TcpStream) {
             info!("Written {} bytes", e);
         }
         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-            dbg!("Would block");
+            debug!("Would block");
         }
-        Err(e) => {
-            dbg!(e);
-        }
+        Err(_) => {}
     }
 }
-async fn handle_raw_tcp_stream(stream: &mut TcpStream) {
+async fn handle_raw_tcp_stream(mut stream: TcpStream) {
     loop {
         tokio::select! {
             _ = stream.readable() => {
-                read_stream(stream).await;
+                read_stream(&mut stream).await;
             }
             _ = stream.writable() => {
-                write_to_stream(stream).await;
+                write_to_stream(&mut stream).await;
             }
         }
     }
