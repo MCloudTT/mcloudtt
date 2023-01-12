@@ -35,7 +35,7 @@ async fn handle_packet(mut stream: &mut TcpStream) {
             match packet {
                 Some(Packet::Connect(p)) => handle_connect_packet(stream, &peer, &p).await,
                 Some(Packet::PingRequest) => handle_pingreq_packet(stream).await,
-                Some(Packet::Disconnect(p)) => handle_disconnect_packet(&p, &peer).await,
+                Some(Packet::Disconnect(p)) => handle_disconnect_packet(&peer, &p).await,
                 _ => info!("No known packet-type"),
             }
         }
@@ -78,7 +78,7 @@ async fn handle_connect_packet(stream: &mut TcpStream, peer: &SocketAddr, packet
     write_to_stream(stream, &ack).await;
 }
 /// log which client disconneced
-async fn handle_disconnect_packet(packet: &DisconnectPacket, peer: &SocketAddr) {
+async fn handle_disconnect_packet(peer: &SocketAddr, packet: &DisconnectPacket) {
     let reason = packet.reason_code;
     // handle DisconnectWithWill?
     info!("{:?} disconnect with reason-code: {:?}", peer, reason);
