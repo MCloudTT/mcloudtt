@@ -1,0 +1,26 @@
+[package]
+name = "mcloudtt-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+honggfuzz = "0.5.55"
+bytes = "1"
+mqtt-v5 = { git="https://github.com/Nereuxofficial/mqtt-broker", package="mqtt-v5" }
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "fuzz_mqtt_v5"
+path = "fuzz_targets/fuzz_mqtt_v5.rs"
+test = true
+doc = false
