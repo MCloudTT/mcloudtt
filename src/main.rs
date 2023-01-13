@@ -1,9 +1,12 @@
 use bytes::BytesMut;
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
-use mqtt_v5::types::properties::{MaximumPacketSize, MaximumQos};
+use mqtt_v5::types::properties::{
+    AssignedClientIdentifier, MaximumPacketSize, MaximumQos,
+};
 use mqtt_v5::types::{
-    ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, Packet, ProtocolVersion, QoS,
+    ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, Packet, ProtocolVersion,
+    PublishAckPacket, PublishPacket, QoS,
 };
 use std::io;
 use std::net::SocketAddr;
@@ -29,12 +32,14 @@ async fn handle_packet(mut stream: &mut TcpStream) {
         Ok(0) => {}
         Ok(n) => {
             // info!("{:?}", buf);
+            info!("Read {:?} bytes", n);
             let packet =
                 decode_mqtt(&mut BytesMut::from(buf.as_slice()), ProtocolVersion::V500).unwrap();
             info!("From {:?}: Received packet: {:?}", peer, packet);
             match packet {
                 Some(Packet::Connect(p)) => handle_connect_packet(stream, &peer, &p).await,
                 Some(Packet::PingRequest) => handle_pingreq_packet(stream).await,
+                Some(Packet::Publish(p)) => handle_publish_packet(stream, &peer, &p).await,
                 Some(Packet::Disconnect(p)) => handle_disconnect_packet(&peer, &p).await,
                 _ => info!("No known packet-type"),
             }
@@ -62,6 +67,7 @@ async fn handle_connect_packet(stream: &mut TcpStream, peer: &SocketAddr, packet
         retain_available: None,
         // TODO: increase buffer size
         maximum_packet_size: Some(MaximumPacketSize(256)),
+        // TODO: assign unique client_identifier
         assigned_client_identifier: None,
         topic_alias_maximum: None,
         reason_string: None,
@@ -87,6 +93,26 @@ async fn handle_disconnect_packet(peer: &SocketAddr, packet: &DisconnectPacket) 
 async fn handle_pingreq_packet(stream: &mut TcpStream) {
     let ping_response = Packet::PingResponse;
     write_to_stream(stream, &ping_response).await;
+}
+/// process published payload and send PUBACK
+async fn handle_publish_packet(stream: &mut TcpStream, peer: &SocketAddr, packet: &PublishPacket) {
+    // TODO: process payload
+    info!(
+        "{:?} published {:?} to {:?}",
+        peer, packet.payload, packet.topic
+    );
+    // TODO: consult specification on how to handle mising packet_id
+    let puback = Packet::PublishAck(PublishAckPacket {
+        packet_id: if let Some(id) = packet.packet_id {
+            id
+        } else {
+            0
+        },
+        reason_code: mqtt_v5::types::PublishAckReason::Success,
+        reason_string: None,
+        user_properties: vec![],
+    });
+    write_to_stream(stream, &puback).await;
 }
 /// write provided packet to stream
 async fn write_to_stream(stream: &mut TcpStream, packet: &Packet) {
