@@ -99,10 +99,10 @@ async fn handle_publish_packet(stream: &mut TcpStream, peer: &SocketAddr, packet
         "{:?} published {:?} to {:?}",
         peer, packet.payload, packet.topic
     );
-    // TODO: consult specification on how to handle mising packet_id
+    // packet with a QoS of 0 do not have a packet_id
     let puback = Packet::PublishAck(PublishAckPacket {
-        packet_id: if let Some(id) = packet.packet_id {
-            id
+        packet_id: if packet.qos != QoS::AtMostOnce {
+            packet.packet_id.unwrap()
         } else {
             0
         },
