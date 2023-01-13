@@ -11,11 +11,6 @@ tokio-tungstenite = "0.18.0"
 tracing = "0.1.37"
 tracing-subscriber = "0.3.16"
 futures-util = "0.3.25"
-<<<<<<< Updated upstream
 mqtt-v5 = { git="https://github.com/Nereuxofficial/mqtt-broker", package="mqtt-v5" }
 bytes = "1"
-=======
-mqtt-v5 = "0.1.1"
-bytes = "0.5.6"
 async-backtrace = "0.2"
->>>>>>> Stashed changes
