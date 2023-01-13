@@ -63,6 +63,7 @@ async fn handle_connect_packet(stream: &mut TcpStream, peer: &SocketAddr, packet
         reason_code: ConnectReason::Success,
         session_expiry_interval: None,
         receive_maximum: None,
+        // temp qos on 1
         maximum_qos: Some(MaximumQos(QoS::AtMostOnce)),
         retain_available: None,
         // TODO: increase buffer size
@@ -101,18 +102,16 @@ async fn handle_publish_packet(stream: &mut TcpStream, peer: &SocketAddr, packet
         "{:?} published {:?} to {:?}",
         peer, packet.payload, packet.topic
     );
-    // packet with a QoS of 0 do not have a packet_id
-    let puback = Packet::PublishAck(PublishAckPacket {
-        packet_id: if packet.qos != QoS::AtMostOnce {
-            packet.packet_id.unwrap()
-        } else {
-            0
-        },
-        reason_code: mqtt_v5::types::PublishAckReason::Success,
-        reason_string: None,
-        user_properties: vec![],
-    });
-    write_to_stream(stream, &puback).await;
+    // packet with a QoS of 0 do get a PUBACK
+    if packet.qos != QoS::AtMostOnce {
+        let puback = Packet::PublishAck(PublishAckPacket {
+            packet_id: packet.packet_id.unwrap(),
+            reason_code: mqtt_v5::types::PublishAckReason::Success,
+            reason_string: None,
+            user_properties: vec![],
+        });
+        write_to_stream(stream, &puback).await;
+    }
 }
 /// write provided packet to stream
 async fn write_to_stream(stream: &mut TcpStream, packet: &Packet) {
