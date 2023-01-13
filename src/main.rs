@@ -1,7 +1,9 @@
+mod topics;
+
 use bytes::BytesMut;
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
-use mqtt_v5::types::properties::{AssignedClientIdentifier, MaximumPacketSize, MaximumQos};
+use mqtt_v5::types::properties::{MaximumPacketSize, MaximumQos};
 use mqtt_v5::types::{
     ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, Packet, ProtocolVersion,
     PublishAckPacket, PublishPacket, QoS,
@@ -17,13 +19,13 @@ async fn main() {
     tracing_subscriber::fmt::init();
     info!("Starting MCloudTT!");
     let listener = TcpListener::bind(TCP_LISTENER_ADDR).await.unwrap();
-    while let Ok((mut stream, addr)) = listener.accept().await {
+    while let Ok((stream, addr)) = listener.accept().await {
         info!("Peer connected: {:?}", addr);
         tokio::spawn(handle_raw_tcp_stream(stream, addr));
     }
 }
 /// read packet from client and decide how to respond
-async fn handle_packet(mut stream: &mut TcpStream) {
+async fn handle_packet(stream: &mut TcpStream) {
     let mut buf = [0; 265];
     let peer = stream.peer_addr().unwrap();
     match stream.read(&mut buf).await {
@@ -45,7 +47,7 @@ async fn handle_packet(mut stream: &mut TcpStream) {
         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
             debug!("Would block");
         }
-        Err(e) => {}
+        Err(_) => {}
     }
 }
 

@@ -23,11 +23,4 @@ mod tests {
         let bytes = include_bytes!("../hfuzz_workspace/fuzz_mqtt_v5/SIGABRT.PC.7ffff7def64c.STACK.188a85a8a3.CODE.-6.ADDR.0.INSTR.mov____%eax,%ebp.fuzz");
         decode_mqtt(&mut BytesMut::from(bytes.as_slice()), ProtocolVersion::V500).unwrap();
     }
-    #[test]
-    fn doesthiswork(){
-        let data = include_bytes!("../hfuzz_workspace/fuzz_mqtt_v5/SIGABRT.PC.7ffff7def64c.STACK.188a85a8a3.CODE.-6.ADDR.0.INSTR.mov____%eax,%ebp.fuzz");
-        if let Ok(packet) = decode_mqtt(&mut BytesMut::from(data.as_slice()), ProtocolVersion::V500) {
-            let _ = packet;
-        }
-    }
 }
