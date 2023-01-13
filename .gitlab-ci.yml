@@ -2,6 +2,8 @@ stable:cargo:
   image: rustdocker/rust:stable
   stage: test
   script:
+    - free -h
+    - lscpu
     - cargo test --verbose --jobs 1
     - cargo build --release
     - cargo build
