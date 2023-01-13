@@ -1,9 +1,7 @@
 use bytes::BytesMut;
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
-use mqtt_v5::types::properties::{
-    AssignedClientIdentifier, MaximumPacketSize, MaximumQos,
-};
+use mqtt_v5::types::properties::{AssignedClientIdentifier, MaximumPacketSize, MaximumQos};
 use mqtt_v5::types::{
     ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, Packet, ProtocolVersion,
     PublishAckPacket, PublishPacket, QoS,
