@@ -5,11 +5,11 @@ use crate::topics::{Client, Message, Topics};
 use bytes::BytesMut;
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
-use mqtt_v5::topic::Topic;
+use mqtt_v5::topic::{Topic, TopicFilter};
 use mqtt_v5::types::properties::{MaximumPacketSize, MaximumQos};
 use mqtt_v5::types::{
     ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, Packet, ProtocolVersion,
-    PublishAckPacket, PublishPacket, QoS,
+    PublishAckPacket, PublishPacket, QoS, SubscribeAckPacket, SubscribeAckReason, SubscribePacket,
 };
 use std::borrow::Cow;
 use std::io;
@@ -74,6 +74,7 @@ async fn handle_packet(stream: &mut TcpStream) {
                 Some(Packet::Connect(p)) => handle_connect_packet(stream, &peer, &p).await,
                 Some(Packet::PingRequest) => handle_pingreq_packet(stream).await,
                 Some(Packet::Publish(p)) => handle_publish_packet(stream, &peer, &p).await,
+                Some(Packet::Subscribe(p)) => handle_subscribe_packet(stream, &peer, &p).await,
                 Some(Packet::Disconnect(p)) => handle_disconnect_packet(&peer, &p).await,
                 _ => info!("No known packet-type"),
             }
@@ -146,6 +147,57 @@ async fn handle_publish_packet(stream: &mut TcpStream, peer: &SocketAddr, packet
         });
         write_to_stream(stream, &puback).await;
     }
+}
+async fn handle_subscribe_packet(
+    stream: &mut TcpStream,
+    peer: &SocketAddr,
+    packet: &SubscribePacket,
+) {
+    info!("{:?} subscribed to {:?}", peer, packet.subscription_topics);
+
+    // TODO: tell client following features are not supported: SharedSubscriptions, WildcardSubscriptions
+    let mut sub_ack_packet = SubscribeAckPacket {
+        packet_id: packet.packet_id,
+        reason_string: None,
+        user_properties: vec![],
+        reason_codes: vec![],
+    };
+
+    // handle unsupported features
+    for sub_topic in &packet.subscription_topics {
+        let topic_filter = sub_topic.topic_filter.clone();
+        match topic_filter {
+            TopicFilter::Concrete {
+                filter,
+                level_count,
+            } => sub_ack_packet
+                .reason_codes
+                .push(SubscribeAckReason::GrantedQoSZero),
+            TopicFilter::Wildcard {
+                filter,
+                level_count,
+            } => sub_ack_packet
+                .reason_codes
+                .push(SubscribeAckReason::WildcardSubscriptionsNotSupported),
+            TopicFilter::SharedConcrete {
+                group_name,
+                filter,
+                level_count,
+            } => sub_ack_packet
+                .reason_codes
+                .push(SubscribeAckReason::SharedSubscriptionsNotSupported),
+            TopicFilter::SharedWildcard {
+                group_name,
+                filter,
+                level_count,
+            } => sub_ack_packet
+                .reason_codes
+                .push(SubscribeAckReason::SharedSubscriptionsNotSupported),
+        }
+    }
+    let suback = Packet::SubscribeAck(sub_ack_packet);
+    // ackknowledge subscription
+    write_to_stream(stream, &suback).await;
 }
 /// write provided packet to stream
 async fn write_to_stream(stream: &mut TcpStream, packet: &Packet) {
