@@ -4,6 +4,7 @@ stable:cargo:
   script:
     - free -h
     - lscpu
+    - cargo check --verbose
     - cargo test --verbose --jobs 1
     - cargo build --release
     - cargo build
