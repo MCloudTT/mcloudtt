@@ -1,14 +1,21 @@
 use crate::error::{MCloudError, Result};
-use std::borrow::{Borrow, Cow};
+use std::borrow::Cow;
 use std::collections::BTreeMap;
-use tokio::sync::broadcast::Sender as BroadcastSender;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::broadcast::channel;
+use tokio::sync::{broadcast::Sender as BroadcastSender, mpsc::Sender};
 use tracing::error;
 #[derive(Debug, Default)]
-pub struct Topics<'a>(BTreeMap<String, Channel<'a>>);
-impl<'a> Topics<'a> {
-    pub(crate) fn add(&'a mut self, name: Cow<String>, channel: Channel<'a>) -> Result {
-        if self.0.insert(name.to_string(), channel).is_none() {
+pub struct Topics(pub(crate) BTreeMap<String, Channel>);
+impl Topics {
+    pub(crate) fn add(&mut self, name: Cow<String>) -> Result {
+        if self
+            .0
+            .insert(
+                name.to_string(),
+                Channel::new(channel((usize::MAX >> 1) - 1).0),
+            )
+            .is_none()
+        {
             return Err(MCloudError::TopicAlreadyExists(name.to_string()));
         }
         Ok(())
@@ -19,14 +26,22 @@ pub struct Client {
     pub sender: Sender<Message>,
     pub receiver: tokio::sync::mpsc::Receiver<Message>,
 }
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Message {
     Publish(String),
     Subscribe(String),
     Unsubscribe(String),
 }
 #[derive(Debug)]
-pub struct Channel<'a> {
-    pub subscribers: Vec<&'a Client>,
+pub struct Channel {
+    pub sender: BroadcastSender<Message>,
     pub messages: Vec<String>,
+}
+impl Channel {
+    pub fn new(sender: BroadcastSender<Message>) -> Self {
+        Self {
+            sender,
+            messages: vec![],
+        }
+    }
 }
