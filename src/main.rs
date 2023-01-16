@@ -1,3 +1,4 @@
+pub(crate) mod error;
 mod topics;
 
 use crate::topics::Topics;
@@ -35,7 +36,6 @@ async fn handle_packet(stream: &mut TcpStream) {
     match stream.read(&mut buf).await {
         Ok(0) => {}
         Ok(n) => {
-            // info!("{:?}", buf);
             info!("Read {:?} bytes", n);
             let packet =
                 decode_mqtt(&mut BytesMut::from(buf.as_slice()), ProtocolVersion::V500).unwrap();
@@ -137,7 +137,6 @@ async fn handle_raw_tcp_stream(mut stream: TcpStream, addr: SocketAddr) {
     loop {
         match stream.readable().await {
             Ok(_) => handle_packet(&mut stream).await,
-            // TODO: replace info! macro
             Err(ref e) => info!("ERROR {:?} connection: {:?}", addr, e),
         }
     }
