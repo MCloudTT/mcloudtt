@@ -1,8 +1,10 @@
 mod topics;
 
+use crate::topics::Topics;
 use bytes::BytesMut;
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
+use mqtt_v5::topic::Topic;
 use mqtt_v5::types::properties::{MaximumPacketSize, MaximumQos};
 use mqtt_v5::types::{
     ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, Packet, ProtocolVersion,
@@ -13,11 +15,13 @@ use std::net::SocketAddr;
 use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, info};
+
 const TCP_LISTENER_ADDR: &str = "127.0.0.1:1883";
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
     info!("Starting MCloudTT!");
+    let mut topics = Topics::default();
     let listener = TcpListener::bind(TCP_LISTENER_ADDR).await.unwrap();
     while let Ok((stream, addr)) = listener.accept().await {
         info!("Peer connected: {:?}", addr);

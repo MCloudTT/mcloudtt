@@ -1,19 +1,19 @@
 use std::collections::BTreeMap;
-
-struct Topics<'a> {
-    topics: BTreeMap<String, Topic<'a>>,
+#[derive(Debug, Default)]
+pub struct Topics<'a>(BTreeMap<String, Channel<'a>>);
+#[derive(Debug)]
+pub struct Client {
+    pub sender: tokio::sync::mpsc::Sender<Message>,
+    pub receiver: tokio::sync::mpsc::Receiver<Message>,
 }
-struct Client {
-    sender: tokio::sync::mpsc::Sender<Message>,
-    receiver: tokio::sync::mpsc::Receiver<Message>,
-}
-enum Message {
+#[derive(Debug, PartialEq)]
+pub enum Message {
     Publish(String),
     Subscribe(String),
     Unsubscribe(String),
 }
-struct Topic<'a> {
-    name: &'static str,
-    subscribers: Vec<&'a Client>,
-    messages: Vec<String>,
+#[derive(Debug)]
+pub struct Channel<'a> {
+    pub subscribers: Vec<&'a Client>,
+    pub messages: Vec<String>,
 }
