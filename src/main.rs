@@ -25,6 +25,9 @@ use tracing_subscriber::EnvFilter;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Registry};
 use tracing_tree::HierarchicalLayer;
 
+#[cfg(feature = "docker")]
+const TCP_LISTENER_ADDR: &str = "0.0.0.0:1883";
+#[cfg(not(feature = "docker"))]
 const TCP_LISTENER_ADDR: &str = "127.0.0.1:1883";
 #[tokio::main]
 async fn main() {
