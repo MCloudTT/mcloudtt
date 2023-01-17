@@ -20,11 +20,23 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast::channel as broadcast_channel;
 use tokio::sync::mpsc::Receiver;
 use tracing::{debug, info};
+use tracing_subscriber::EnvFilter;
+
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Registry};
+use tracing_tree::HierarchicalLayer;
 
 const TCP_LISTENER_ADDR: &str = "127.0.0.1:1883";
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    // tracing_subscriber::fmt::init();
+    Registry::default()
+        .with(EnvFilter::from_default_env())
+        .with(
+            HierarchicalLayer::new(2)
+                .with_targets(true)
+                .with_bracketed_fields(true),
+        )
+        .init();
     info!("Starting MCloudTT!");
     let mut topics = Arc::new(Mutex::new(Topics::default()));
     let mut receivers: Vec<Receiver<Message>> = vec![];
@@ -42,6 +54,8 @@ async fn main() {
     }
 }
 
+#[tracing::instrument]
+#[async_backtrace::framed]
 async fn handle_message(msg: Message, topics: Arc<Mutex<Topics>>) {
     match msg {
         Message::Publish(topic) => {
@@ -60,6 +74,8 @@ async fn handle_message(msg: Message, topics: Arc<Mutex<Topics>>) {
     }
 }
 /// read packet from client and decide how to respond
+#[tracing::instrument]
+#[async_backtrace::framed]
 async fn handle_packet(stream: &mut TcpStream) {
     let mut buf = [0; 265];
     let peer = stream.peer_addr().unwrap();
@@ -87,6 +103,8 @@ async fn handle_packet(stream: &mut TcpStream) {
 }
 
 // move these function to own file?
+#[tracing::instrument]
+#[async_backtrace::framed]
 async fn handle_connect_packet(stream: &mut TcpStream, peer: &SocketAddr, packet: &ConnectPacket) {
     info!(
         "Connection request from peer {:?} with:\nname: {:?}\nversion: {:?}",
@@ -120,17 +138,23 @@ async fn handle_connect_packet(stream: &mut TcpStream, peer: &SocketAddr, packet
     write_to_stream(stream, &ack).await;
 }
 /// log which client disconneced
+#[tracing::instrument]
+#[async_backtrace::framed]
 async fn handle_disconnect_packet(peer: &SocketAddr, packet: &DisconnectPacket) {
     let reason = packet.reason_code;
     // handle DisconnectWithWill?
     info!("{:?} disconnect with reason-code: {:?}", peer, reason);
 }
 /// respond to client ping
+#[tracing::instrument]
+#[async_backtrace::framed]
 async fn handle_pingreq_packet(stream: &mut TcpStream) {
     let ping_response = Packet::PingResponse;
     write_to_stream(stream, &ping_response).await;
 }
 /// process published payload and send PUBACK
+#[tracing::instrument]
+#[async_backtrace::framed]
 async fn handle_publish_packet(stream: &mut TcpStream, peer: &SocketAddr, packet: &PublishPacket) {
     // TODO: process payload
     info!(
@@ -148,6 +172,8 @@ async fn handle_publish_packet(stream: &mut TcpStream, peer: &SocketAddr, packet
         write_to_stream(stream, &puback).await;
     }
 }
+#[tracing::instrument]
+#[async_backtrace::framed]
 async fn handle_subscribe_packet(
     stream: &mut TcpStream,
     peer: &SocketAddr,
@@ -200,6 +226,8 @@ async fn handle_subscribe_packet(
     write_to_stream(stream, &suback).await;
 }
 /// write provided packet to stream
+#[tracing::instrument]
+#[async_backtrace::framed]
 async fn write_to_stream(stream: &mut TcpStream, packet: &Packet) {
     let mut buf = BytesMut::new();
     encode_mqtt(packet, &mut buf, ProtocolVersion::V500);
@@ -214,6 +242,8 @@ async fn write_to_stream(stream: &mut TcpStream, packet: &Packet) {
         Err(_) => {}
     }
 }
+#[tracing::instrument]
+#[async_backtrace::framed]
 async fn handle_raw_tcp_stream(mut stream: TcpStream, addr: SocketAddr) {
     // wait for new packets from client
     loop {
