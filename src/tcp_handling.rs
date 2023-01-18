@@ -51,14 +51,14 @@ impl Client {
         }
     }
 
-    /// respond to client ping
+    /// Respond to client ping
     #[tracing::instrument]
     #[async_backtrace::framed]
     async fn handle_pingreq_packet(stream: &mut TcpStream) -> Result<(), MCloudError> {
         let ping_response = Packet::PingResponse;
         Self::write_to_stream(stream, &ping_response).await
     }
-    /// process published payload and send PUBACK
+    /// Process published payload and send PUBACK
     #[tracing::instrument]
     #[async_backtrace::framed]
     async fn handle_publish_packet(
@@ -71,7 +71,7 @@ impl Client {
             "{:?} published {:?} to {:?}",
             peer, packet.payload, packet.topic
         );
-        // packet with a QoS of 0 do get a PUBACK
+        // Packet with a QoS of 0 do get a PUBACK
         if packet.qos != QoS::AtMostOnce {
             let puback = Packet::PublishAck(PublishAckPacket {
                 packet_id: packet.packet_id.unwrap(),
@@ -101,7 +101,7 @@ impl Client {
             reason_codes: vec![],
         };
 
-        // handle unsupported features
+        // Handle unsupported features
         for sub_topic in &packet.subscription_topics {
             let topic_filter = sub_topic.topic_filter.clone();
             match topic_filter {
@@ -137,7 +137,7 @@ impl Client {
         // ackknowledge subscription
         Self::write_to_stream(stream, &suback).await
     }
-    /// write provided packet to stream
+    /// Write provided packet to stream
     #[tracing::instrument]
     #[async_backtrace::framed]
     async fn write_to_stream(stream: &mut TcpStream, packet: &Packet) -> Result<(), MCloudError> {
@@ -152,7 +152,7 @@ impl Client {
             Err(ref e) => Err(MCloudError::CouldNotWriteToStream(e.to_string())),
         }
     }
-    /// read packet from client and decide how to respond
+    /// Read packet from client and decide how to respond
     #[tracing::instrument]
     #[async_backtrace::framed]
     async fn handle_packet(&mut self, stream: &mut TcpStream) -> Result<(), MCloudError> {
@@ -231,7 +231,7 @@ impl Client {
         });
         Self::write_to_stream(stream, &ack).await
     }
-    /// log which client disconneced
+    /// Log which client disconnected and the reason
     #[tracing::instrument]
     #[async_backtrace::framed]
     async fn handle_disconnect_packet(
