@@ -1,24 +1,34 @@
 use crate::error::{MCloudError, Result};
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use tokio::sync::broadcast::channel;
 use tokio::sync::broadcast::Sender as BroadcastSender;
+use tokio::sync::broadcast::{channel, Receiver};
+use tracing::info;
 
 #[derive(Debug, Default)]
 pub struct Topics(pub(crate) BTreeMap<String, Channel>);
 impl Topics {
-    pub(crate) fn add(&mut self, name: Cow<String>) -> Result {
+    /// Creates a new topic and returns a receiver for it. Errors if the topic already exists.
+    pub(crate) fn add(&mut self, name: Cow<String>) -> Result<Receiver<Message>> {
+        let (sender, receiver) = channel((usize::MAX >> 1) - 1);
         if self
             .0
-            .insert(
-                name.to_string(),
-                Channel::new(channel((usize::MAX >> 1) - 1).0),
-            )
+            .insert(name.to_string(), Channel::new(sender))
             .is_none()
         {
-            return Err(MCloudError::TopicAlreadyExists(name.to_string()));
+            return Ok(receiver);
         }
-        Ok(())
+        Err(MCloudError::TopicAlreadyExists(name.to_string()))
+    }
+    /// Returns a receiver for the given topic
+    pub(crate) fn subscribe(&mut self, name: Cow<String>) -> Result<Receiver<Message>> {
+        dbg!("subscribing to topic {}", name.clone());
+        if let Some(channel) = self.0.get_mut(&name.to_string()) {
+            Ok(channel.sender.subscribe())
+        } else {
+            info!("Topic {:?} does not exist... Creating it", name);
+            Ok(self.add(name)?)
+        }
     }
 }
 #[derive(Clone, Debug, PartialEq)]

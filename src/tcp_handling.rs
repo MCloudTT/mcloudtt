@@ -3,7 +3,6 @@ use mqtt_v5::types::{
     ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, Packet, ProtocolVersion,
     PublishAckPacket, PublishPacket, QoS, SubscribeAckPacket, SubscribeAckReason, SubscribePacket,
 };
-use std::io;
 
 use crate::error::MCloudError;
 use crate::topics::{Message, Topics};
@@ -17,7 +16,7 @@ use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
-use tracing::{debug, info};
+use tracing::info;
 
 #[derive(Debug)]
 pub struct Client {
