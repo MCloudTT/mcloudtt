@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use tokio::sync::broadcast::channel;
 use tokio::sync::{broadcast::Sender as BroadcastSender, mpsc::Sender};
-use tracing::error;
+
 #[derive(Debug, Default)]
 pub struct Topics(pub(crate) BTreeMap<String, Channel>);
 impl Topics {

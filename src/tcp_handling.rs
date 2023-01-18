@@ -74,28 +74,28 @@ async fn handle_subscribe_packet(
         let topic_filter = sub_topic.topic_filter.clone();
         match topic_filter {
             TopicFilter::Concrete {
-                filter,
-                level_count,
+                filter: _,
+                level_count: _,
             } => sub_ack_packet
                 .reason_codes
                 .push(SubscribeAckReason::GrantedQoSZero),
             TopicFilter::Wildcard {
-                filter,
-                level_count,
+                filter: _,
+                level_count: _,
             } => sub_ack_packet
                 .reason_codes
                 .push(SubscribeAckReason::WildcardSubscriptionsNotSupported),
             TopicFilter::SharedConcrete {
-                group_name,
-                filter,
-                level_count,
+                group_name: _,
+                filter: _,
+                level_count: _,
             } => sub_ack_packet
                 .reason_codes
                 .push(SubscribeAckReason::SharedSubscriptionsNotSupported),
             TopicFilter::SharedWildcard {
-                group_name,
-                filter,
-                level_count,
+                group_name: _,
+                filter: _,
+                level_count: _,
             } => sub_ack_packet
                 .reason_codes
                 .push(SubscribeAckReason::SharedSubscriptionsNotSupported),

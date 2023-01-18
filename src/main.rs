@@ -2,24 +2,21 @@ pub(crate) mod error;
 mod tcp_handling;
 mod topics;
 
-use crate::topics::{Client, Message, Topics};
-use bytes::BytesMut;
-use mqtt_v5::decoder::decode_mqtt;
-use mqtt_v5::encoder::encode_mqtt;
-use mqtt_v5::topic::{Topic, TopicFilter};
-use mqtt_v5::types::properties::{MaximumPacketSize, MaximumQos};
-use mqtt_v5::types::{
-    ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, Packet, ProtocolVersion,
-    PublishAckPacket, PublishPacket, QoS, SubscribeAckPacket, SubscribeAckReason, SubscribePacket,
-};
+use crate::topics::{Message, Topics};
+
+
+
+
+
+
 use std::borrow::Cow;
-use std::io;
+
 use std::sync::{Arc, Mutex};
-use tokio::io::AsyncReadExt;
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::broadcast::channel as broadcast_channel;
+
+use tokio::net::{TcpListener};
+
 use tokio::sync::mpsc::Receiver;
-use tracing::{debug, info};
+use tracing::{info};
 use tracing_subscriber::EnvFilter;
 
 use crate::tcp_handling::handle_raw_tcp_stream;
@@ -42,7 +39,7 @@ async fn main() {
         )
         .init();
     info!("Starting MCloudTT!");
-    let mut topics = Arc::new(Mutex::new(Topics::default()));
+    let topics = Arc::new(Mutex::new(Topics::default()));
     let mut receivers: Vec<Receiver<Message>> = vec![];
     let listener = TcpListener::bind(TCP_LISTENER_ADDR).await.unwrap();
     while let Ok((stream, addr)) = listener.accept().await {
@@ -50,7 +47,7 @@ async fn main() {
         tokio::spawn(handle_raw_tcp_stream(stream, addr));
         // Iterate through all receivers to see if messages were received and if so publish them to
         // the corresponding channels
-        let spawned_threads: Vec<_> = receivers
+        let _spawned_threads: Vec<_> = receivers
             .iter_mut()
             .filter_map(|receiver| receiver.try_recv().ok())
             .map(|message| tokio::spawn(handle_message(message, topics.clone())))
