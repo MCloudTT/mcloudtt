@@ -10,7 +10,7 @@ pub struct Topics(pub(crate) BTreeMap<String, Channel>);
 impl Topics {
     /// Creates a new topic and returns a receiver for it. Errors if the topic already exists.
     pub(crate) fn add(&mut self, name: Cow<String>) -> Result<Receiver<Message>> {
-        let (sender, receiver) = channel((usize::MAX >> 1) - 1);
+        let (sender, receiver) = channel(1024);
         if self
             .0
             .insert(name.to_string(), Channel::new(sender))

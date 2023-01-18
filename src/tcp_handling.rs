@@ -10,6 +10,7 @@ use bytes::BytesMut;
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
 use mqtt_v5::topic::TopicFilter;
+use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tokio::io::AsyncReadExt;
@@ -105,11 +106,25 @@ impl Client {
             let topic_filter = sub_topic.topic_filter.clone();
             match topic_filter {
                 TopicFilter::Concrete {
-                    filter: _,
+                    filter: f,
                     level_count: _,
-                } => sub_ack_packet
-                    .reason_codes
-                    .push(SubscribeAckReason::GrantedQoSZero),
+                } => {
+                    sub_ack_packet
+                        .reason_codes
+                        .push(SubscribeAckReason::GrantedQoSZero);
+
+                    if self.receiver.is_none() {
+                        self.receiver = Some(
+                            self.topics
+                                .lock()
+                                .unwrap()
+                                .subscribe(Cow::Owned(f.clone()))
+                                .unwrap(),
+                        );
+
+                        info!("Client {:?} subscribed to {:?}", peer, &f);
+                    }
+                }
                 TopicFilter::Wildcard {
                     filter: _,
                     level_count: _,
