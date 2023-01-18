@@ -3,7 +3,6 @@ use mqtt_v5::types::{
     ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, Packet, ProtocolVersion,
     PublishAckPacket, PublishPacket, QoS, SubscribeAckPacket, SubscribeAckReason, SubscribePacket,
 };
-use std::io;
 
 use crate::error::MCloudError;
 use crate::topics::{Message, Topics};
@@ -17,7 +16,7 @@ use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
-use tracing::{debug, info};
+use tracing::info;
 
 #[derive(Debug)]
 pub struct Client {
@@ -152,7 +151,7 @@ async fn write_to_stream(stream: &mut TcpStream, packet: &Packet) -> Result<(), 
         Err(ref e) => Err(MCloudError::CouldNotWriteToStream(e.to_string())),
     }
 }
-/// read packet from client and decide how to respond
+/// Read packet from client and decide how to respond
 #[tracing::instrument]
 #[async_backtrace::framed]
 async fn handle_packet(stream: &mut TcpStream) -> Result<(), MCloudError> {
@@ -161,9 +160,7 @@ async fn handle_packet(stream: &mut TcpStream) -> Result<(), MCloudError> {
     match stream.read(&mut buf).await {
         Ok(0) => {
             info!("{0} disconnected unexpectedly", &peer);
-            Err(MCloudError::UnexpectedClientDisconnected(
-                (&peer).to_string(),
-            ))
+            Err(MCloudError::UnexpectedClientDisconnected(peer.to_string()))
         }
         Ok(n) => {
             info!("Read {:?} bytes", n);
