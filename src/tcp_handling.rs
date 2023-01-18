@@ -5,6 +5,7 @@ use mqtt_v5::types::{
 };
 use std::io;
 
+use crate::error::MCloudError;
 use crate::topics::{Message, Topics};
 use bytes::BytesMut;
 use mqtt_v5::decoder::decode_mqtt;
@@ -38,7 +39,13 @@ impl Client {
         // wait for new packets from client
         loop {
             match stream.readable().await {
-                Ok(_) => handle_packet(&mut stream).await,
+                Ok(_) => match handle_packet(&mut stream).await {
+                    Ok(_) => continue,
+                    Err(_) => {
+                        info!("Closing client {0}", &addr);
+                        break;
+                    }
+                },
                 Err(ref e) => info!("ERROR {:?} connection: {:?}", addr, e),
             }
         }
@@ -48,14 +55,18 @@ impl Client {
 /// respond to client ping
 #[tracing::instrument]
 #[async_backtrace::framed]
-async fn handle_pingreq_packet(stream: &mut TcpStream) {
+async fn handle_pingreq_packet(stream: &mut TcpStream) -> Result<(), MCloudError> {
     let ping_response = Packet::PingResponse;
-    write_to_stream(stream, &ping_response).await;
+    write_to_stream(stream, &ping_response).await
 }
 /// process published payload and send PUBACK
 #[tracing::instrument]
 #[async_backtrace::framed]
-async fn handle_publish_packet(stream: &mut TcpStream, peer: &SocketAddr, packet: &PublishPacket) {
+async fn handle_publish_packet(
+    stream: &mut TcpStream,
+    peer: &SocketAddr,
+    packet: &PublishPacket,
+) -> Result<(), MCloudError> {
     // TODO: process payload
     info!(
         "{:?} published {:?} to {:?}",
@@ -69,8 +80,9 @@ async fn handle_publish_packet(stream: &mut TcpStream, peer: &SocketAddr, packet
             reason_string: None,
             user_properties: vec![],
         });
-        write_to_stream(stream, &puback).await;
+        return write_to_stream(stream, &puback).await;
     }
+    Ok(())
 }
 #[tracing::instrument]
 #[async_backtrace::framed]
@@ -78,7 +90,7 @@ async fn handle_subscribe_packet(
     stream: &mut TcpStream,
     peer: &SocketAddr,
     packet: &SubscribePacket,
-) {
+) -> Result<(), MCloudError> {
     info!("{:?} subscribed to {:?}", peer, packet.subscription_topics);
 
     // TODO: tell client following features are not supported: SharedSubscriptions, WildcardSubscriptions
@@ -123,33 +135,36 @@ async fn handle_subscribe_packet(
     }
     let suback = Packet::SubscribeAck(sub_ack_packet);
     // ackknowledge subscription
-    write_to_stream(stream, &suback).await;
+    write_to_stream(stream, &suback).await
 }
 /// write provided packet to stream
 #[tracing::instrument]
 #[async_backtrace::framed]
-async fn write_to_stream(stream: &mut TcpStream, packet: &Packet) {
+async fn write_to_stream(stream: &mut TcpStream, packet: &Packet) -> Result<(), MCloudError> {
     let mut buf = BytesMut::new();
     encode_mqtt(packet, &mut buf, ProtocolVersion::V500);
     let _ = stream.writable().await;
     match stream.try_write(&buf) {
         Ok(e) => {
             info!("Written {} bytes", e);
+            Ok(())
         }
-        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-            debug!("Would block");
-        }
-        Err(_) => {}
+        Err(ref e) => Err(MCloudError::CouldNotWriteToStream(e.to_string())),
     }
 }
 /// read packet from client and decide how to respond
 #[tracing::instrument]
 #[async_backtrace::framed]
-async fn handle_packet(stream: &mut TcpStream) {
+async fn handle_packet(stream: &mut TcpStream) -> Result<(), MCloudError> {
     let mut buf = [0; 265];
     let peer = stream.peer_addr().unwrap();
     match stream.read(&mut buf).await {
-        Ok(0) => {}
+        Ok(0) => {
+            info!("{0} disconnected unexpectedly", &peer);
+            Err(MCloudError::UnexpectedClientDisconnected(
+                (&peer).to_string(),
+            ))
+        }
         Ok(n) => {
             info!("Read {:?} bytes", n);
             let packet =
@@ -161,19 +176,23 @@ async fn handle_packet(stream: &mut TcpStream) {
                 Some(Packet::Publish(p)) => handle_publish_packet(stream, &peer, &p).await,
                 Some(Packet::Subscribe(p)) => handle_subscribe_packet(stream, &peer, &p).await,
                 Some(Packet::Disconnect(p)) => handle_disconnect_packet(&peer, &p).await,
-                _ => info!("No known packet-type"),
+                _ => {
+                    info!("No known packet-type");
+                    Err(MCloudError::UnknownPacketType)
+                }
             }
         }
-        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-            debug!("Would block");
-        }
-        Err(_) => {}
+        Err(ref e) => Err(MCloudError::ClientError(e.kind().to_string())),
     }
 }
 
 #[tracing::instrument]
 #[async_backtrace::framed]
-async fn handle_connect_packet(stream: &mut TcpStream, peer: &SocketAddr, packet: &ConnectPacket) {
+async fn handle_connect_packet(
+    stream: &mut TcpStream,
+    peer: &SocketAddr,
+    packet: &ConnectPacket,
+) -> Result<(), MCloudError> {
     info!(
         "Connection request from peer {:?} with:\nname: {:?}\nversion: {:?}",
         peer, packet.client_id, packet.protocol_version
@@ -203,13 +222,17 @@ async fn handle_connect_packet(stream: &mut TcpStream, peer: &SocketAddr, packet
         authentication_method: None,
         authentication_data: None,
     });
-    write_to_stream(stream, &ack).await;
+    write_to_stream(stream, &ack).await
 }
 /// log which client disconneced
 #[tracing::instrument]
 #[async_backtrace::framed]
-async fn handle_disconnect_packet(peer: &SocketAddr, packet: &DisconnectPacket) {
+async fn handle_disconnect_packet(
+    peer: &SocketAddr,
+    packet: &DisconnectPacket,
+) -> Result<(), MCloudError> {
     let reason = packet.reason_code;
     // handle DisconnectWithWill?
     info!("{:?} disconnect with reason-code: {:?}", peer, reason);
+    Err(MCloudError::ClientDisconnected((&peer).to_string()))
 }
