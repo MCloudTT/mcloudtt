@@ -14,7 +14,7 @@ use tokio::sync::mpsc::Receiver;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use crate::tcp_handling::handle_raw_tcp_stream;
+use crate::tcp_handling::Client;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Registry};
 use tracing_tree::HierarchicalLayer;
 
@@ -39,7 +39,9 @@ async fn main() {
     let listener = TcpListener::bind(TCP_LISTENER_ADDR).await.unwrap();
     while let Ok((stream, addr)) = listener.accept().await {
         info!("Peer connected: {:?}", addr);
-        tokio::spawn(handle_raw_tcp_stream(stream, addr));
+        let (sender, _receiver) = tokio::sync::mpsc::channel::<Message>(200);
+        let mut client = Client::new(sender, topics.clone());
+        tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
         // Iterate through all receivers to see if messages were received and if so publish them to
         // the corresponding channels
         let _spawned_threads: Vec<_> = receivers

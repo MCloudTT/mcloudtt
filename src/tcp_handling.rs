@@ -5,26 +5,46 @@ use mqtt_v5::types::{
 };
 use std::io;
 
+use crate::topics::{Message, Topics};
 use bytes::BytesMut;
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
 use mqtt_v5::topic::TopicFilter;
 use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
+use tokio::sync::broadcast::Receiver;
+use tokio::sync::mpsc::Sender;
 use tracing::{debug, info};
 
-#[tracing::instrument]
-#[async_backtrace::framed]
-pub async fn handle_raw_tcp_stream(mut stream: TcpStream, addr: SocketAddr) {
-    // wait for new packets from client
-    loop {
-        match stream.readable().await {
-            Ok(_) => handle_packet(&mut stream).await,
-            Err(ref e) => info!("ERROR {:?} connection: {:?}", addr, e),
+#[derive(Debug)]
+pub struct Client {
+    pub sender: Sender<Message>,
+    pub receiver: Option<Receiver<Message>>,
+    pub topics: Arc<Mutex<Topics>>,
+}
+impl Client {
+    pub fn new(sender: Sender<Message>, topics: Arc<Mutex<Topics>>) -> Self {
+        Self {
+            sender,
+            receiver: None,
+            topics,
+        }
+    }
+    #[tracing::instrument]
+    #[async_backtrace::framed]
+    pub async fn handle_raw_tcp_stream(&mut self, mut stream: TcpStream, addr: SocketAddr) {
+        // wait for new packets from client
+        loop {
+            match stream.readable().await {
+                Ok(_) => handle_packet(&mut stream).await,
+                Err(ref e) => info!("ERROR {:?} connection: {:?}", addr, e),
+            }
         }
     }
 }
+
 /// respond to client ping
 #[tracing::instrument]
 #[async_backtrace::framed]

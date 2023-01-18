@@ -1,8 +1,8 @@
 use crate::error::{MCloudError, Result};
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use tokio::sync::broadcast::channel;
-use tokio::sync::{broadcast::Sender as BroadcastSender, mpsc::Sender};
+use tokio::sync::broadcast::{channel};
+use tokio::sync::{broadcast::Sender as BroadcastSender};
 
 #[derive(Debug, Default)]
 pub struct Topics(pub(crate) BTreeMap<String, Channel>);
@@ -20,11 +20,6 @@ impl Topics {
         }
         Ok(())
     }
-}
-#[derive(Debug)]
-pub struct Client {
-    pub sender: Sender<Message>,
-    pub receiver: tokio::sync::mpsc::Receiver<Message>,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub enum Message {
