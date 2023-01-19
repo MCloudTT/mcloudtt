@@ -40,24 +40,3 @@ async fn main() {
         tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
     }
 }
-
-// #[tracing::instrument]
-// #[async_backtrace::framed]
-// async fn handle_message(msg: Message, topics: Arc<Mutex<Topics>>) {
-//     match msg {
-//         Message::Publish(topic) => {
-//             let topic_name = Cow::Owned(topic.topic.topic_name().to_string());
-//             if let Some(channel) = topics.lock().unwrap().0.get_mut(topic_name) {
-//                 channel.messages.push(topic);
-//             } else {
-//                 info!("No channel found for topic: {}, creating it", topic);
-//                 topics
-//                     .lock()
-//                     .unwrap()
-//                     .add(Cow::Owned(topic.to_string()))
-//                     .unwrap();
-//             }
-//         }
-//         _ => {}
-//     }
-// }

@@ -11,9 +11,9 @@ use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
 use mqtt_v5::topic::TopicFilter;
 use std::borrow::Cow;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
@@ -194,9 +194,7 @@ impl Client {
         match stream.read(&mut buf).await {
             Ok(0) => {
                 info!("{0} disconnected unexpectedly", &peer);
-                Err(MCloudError::UnexpectedClientDisconnected(
-                    (&peer).to_string(),
-                ))
+                Err(MCloudError::UnexpectedClientDisconnected(peer.to_string()))
             }
             Ok(n) => {
                 info!("Read {:?} bytes", n);
@@ -273,5 +271,30 @@ impl Client {
         // handle DisconnectWithWill?
         info!("{:?} disconnect with reason-code: {:?}", peer, reason);
         Err(MCloudError::ClientDisconnected((&peer).to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mqtt_v5::types::PacketType::Connect;
+    use std::io::Write;
+    use std::net::TcpStream;
+    use tokio::net::TcpListener;
+    use tokio::sync::mpsc::channel;
+    #[tokio::test]
+    async fn test_has_receiver() {
+        let (tx, rx) = channel(1024);
+        let topics = Arc::new(Mutex::new(Topics::default()));
+        let mut client = Client::new(tx, topics);
+        assert!(client.receiver.is_none());
+        let listener = TcpListener::bind("127.0.0.1:7357").await.unwrap();
+        let mut writer = TcpStream::connect("127.0.0.1:7357").unwrap();
+        let mut buf = BytesMut::new();
+        let packet = encode_mqtt(
+            &Packet::Connect(ConnectPacket::default()),
+            &mut buf,
+            ProtocolVersion::V500,
+        );
     }
 }
