@@ -14,7 +14,7 @@ use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, Interest, ReadBuf};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
@@ -36,19 +36,23 @@ impl Client {
     }
     #[tracing::instrument]
     #[async_backtrace::framed]
-    pub async fn handle_raw_tcp_stream(&mut self, mut stream: TcpStream, addr: SocketAddr) {
+    pub async fn handle_raw_tcp_stream(
+        &mut self,
+        mut stream: TcpStream,
+        addr: SocketAddr,
+    ) -> Result<(), MCloudError> {
         // wait for new packets from client
         loop {
             // stream poll peek -> stream.poll_peek()
-            match stream.readable().await {
-                Ok(_) => match self.handle_packet(&mut stream).await {
+            let ready = stream.ready(Interest::READABLE).await?;
+            if ready.is_readable() {
+                match self.handle_packet(&mut stream).await {
                     Ok(_) => {}
                     Err(_) => {
                         info!("Closing client {0}", &addr);
-                        break;
+                        return Err(MCloudError::ClientError((&addr).to_string()));
                     }
-                },
-                Err(ref e) => info!("ERROR {:?} connection: {:?}", addr, e),
+                };
             }
             if let Some(receiver) = &mut self.receiver {
                 debug!("Client has receiver!");
