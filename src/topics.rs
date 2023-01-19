@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use tokio::sync::broadcast::Sender as BroadcastSender;
 use tokio::sync::broadcast::{channel, Receiver};
-use tracing::info;
+use tracing::{debug, info};
 
 #[derive(Debug, Default)]
 pub struct Topics(pub(crate) BTreeMap<String, Channel>);
@@ -40,7 +40,8 @@ impl Topics {
             info!("Topic {:?} does not exist... Creating it", topic_name);
             let _ = self.add(Cow::Owned(topic_name.clone()));
             let channel = self.0.get_mut(&topic_name).unwrap();
-            channel.sender.send(Message::Publish(packet)).unwrap();
+            let res = channel.sender.send(Message::Publish(packet));
+            debug!("{:?}", res);
         }
         Ok(())
     }

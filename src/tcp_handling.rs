@@ -14,7 +14,7 @@ use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, ReadBuf};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
@@ -39,6 +39,7 @@ impl Client {
     pub async fn handle_raw_tcp_stream(&mut self, mut stream: TcpStream, addr: SocketAddr) {
         // wait for new packets from client
         loop {
+            // stream poll peek -> stream.poll_peek()
             match stream.readable().await {
                 Ok(_) => match self.handle_packet(&mut stream).await {
                     Ok(_) => {}
@@ -90,9 +91,11 @@ impl Client {
             peer, packet.payload, packet.topic
         );
         // Packet with a QoS of 0 do get a PUBACK
+        match self.topics.lock().unwrap().publish(packet.clone()) {
+            Ok(_) => info!("Send message to topic"),
+            Err(ref e) => info!("Could not send message to topic because of `{0}`", e),
+        };
         if packet.qos != QoS::AtMostOnce {
-            self.topics.lock().unwrap().publish(packet.clone());
-
             let puback = Packet::PublishAck(PublishAckPacket {
                 packet_id: packet.packet_id.unwrap(),
                 reason_code: mqtt_v5::types::PublishAckReason::Success,
