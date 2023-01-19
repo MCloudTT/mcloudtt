@@ -13,11 +13,7 @@ use mqtt_v5::topic::TopicFilter;
 use std::borrow::Cow;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
-<<<<<<< HEAD
-use tokio::io::{AsyncReadExt, ReadBuf, Interest};
-=======
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
->>>>>>> dev
+use tokio::io::{AsyncReadExt, Interest, ReadBuf};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
@@ -39,7 +35,11 @@ impl Client {
     }
     #[tracing::instrument]
     #[async_backtrace::framed]
-    pub async fn handle_raw_tcp_stream(&mut self, mut stream: TcpStream, addr: SocketAddr) -> Result<(), MCloudError> {
+    pub async fn handle_raw_tcp_stream(
+        &mut self,
+        mut stream: TcpStream,
+        addr: SocketAddr,
+    ) -> Result<(), MCloudError> {
         // wait for new packets from client
         loop {
             // stream poll peek -> stream.poll_peek()
@@ -51,8 +51,8 @@ impl Client {
                         info!("Closing client {0}", &addr);
                         return Err(MCloudError::ClientError((&addr).to_string()));
                     }
-            };
-        }
+                };
+            }
             if let Some(receiver) = &mut self.receiver {
                 debug!("Client has receiver!");
                 if !receiver.is_empty() {

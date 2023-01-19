@@ -1,9 +1,7 @@
-use std::ops::FromResidual;
-
 use thiserror::Error;
 pub(crate) type Result<T = ()> = std::result::Result<T, MCloudError>;
 #[derive(Error, Debug)]
-pub(crate) enum MCloudError {
+pub enum MCloudError {
     #[error("Topic `{0}` already exists")]
     TopicAlreadyExists(String),
     #[error("Client `{0}` disconncted")]
@@ -18,10 +16,12 @@ pub(crate) enum MCloudError {
     CouldNotWriteToStream(String),
     #[error("No receivers found")]
     NoReceiversFound,
+    #[error("IO error: `{0}`")]
+    IOError(std::io::Error),
 }
 
-impl FromResidual<std::result::Result<Infallible, std::io::Error>> for MCloudError {
-    fn from_residual(residual: std::result::Result<Infallible, std::io::Error>) -> Self {
-        
+impl From<std::io::Error> for MCloudError {
+    fn from(value: std::io::Error) -> Self {
+        MCloudError::IOError(value)
     }
 }
