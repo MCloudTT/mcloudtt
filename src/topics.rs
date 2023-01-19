@@ -1,4 +1,5 @@
 use crate::error::{MCloudError, Result};
+use mqtt_v5::types::PublishPacket;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use tokio::sync::broadcast::Sender as BroadcastSender;
@@ -30,10 +31,23 @@ impl Topics {
             Ok(self.add(name)?)
         }
     }
+    /// Publishes [packet] to the topic specified in [packet]
+    pub(crate) fn publish(&mut self, packet: PublishPacket) -> Result {
+        let topic_name = packet.topic.topic_name().to_string();
+        if let Some(channel) = self.0.get_mut(&topic_name) {
+            channel.sender.send(Message::Publish(packet)).unwrap();
+        } else {
+            info!("Topic {:?} does not exist... Creating it", topic_name);
+            let _ = self.add(Cow::Owned(topic_name.clone()));
+            let channel = self.0.get_mut(&topic_name).unwrap();
+            channel.sender.send(Message::Publish(packet)).unwrap();
+        }
+        Ok(())
+    }
 }
 #[derive(Clone, Debug, PartialEq)]
 pub enum Message {
-    Publish(String),
+    Publish(PublishPacket),
     Subscribe(String),
     Unsubscribe(String),
 }

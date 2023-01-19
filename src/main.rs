@@ -44,30 +44,31 @@ async fn main() {
         tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
         // Iterate through all receivers to see if messages were received and if so publish them to
         // the corresponding channels
-        let _spawned_threads: Vec<_> = receivers
-            .iter_mut()
-            .filter_map(|receiver| receiver.try_recv().ok())
-            .map(|message| tokio::spawn(handle_message(message, topics.clone())))
-            .collect();
+        // let _spawned_threads: Vec<_> = receivers
+        //     .iter_mut()
+        //     .filter_map(|receiver| receiver.try_recv().ok())
+        //     .map(|message| tokio::spawn(handle_message(message, topics.clone())))
+        //     .collect();
     }
 }
 
-#[tracing::instrument]
-#[async_backtrace::framed]
-async fn handle_message(msg: Message, topics: Arc<Mutex<Topics>>) {
-    match msg {
-        Message::Publish(topic) => {
-            if let Some(channel) = topics.lock().unwrap().0.get_mut(&topic) {
-                channel.messages.push(topic);
-            } else {
-                info!("No channel found for topic: {}, creating it", topic);
-                topics
-                    .lock()
-                    .unwrap()
-                    .add(Cow::Owned(topic.to_string()))
-                    .unwrap();
-            }
-        }
-        _ => {}
-    }
-}
+// #[tracing::instrument]
+// #[async_backtrace::framed]
+// async fn handle_message(msg: Message, topics: Arc<Mutex<Topics>>) {
+//     match msg {
+//         Message::Publish(topic) => {
+//             let topic_name = Cow::Owned(topic.topic.topic_name().to_string());
+//             if let Some(channel) = topics.lock().unwrap().0.get_mut(topic_name) {
+//                 channel.messages.push(topic);
+//             } else {
+//                 info!("No channel found for topic: {}, creating it", topic);
+//                 topics
+//                     .lock()
+//                     .unwrap()
+//                     .add(Cow::Owned(topic.to_string()))
+//                     .unwrap();
+//             }
+//         }
+//         _ => {}
+//     }
+// }
