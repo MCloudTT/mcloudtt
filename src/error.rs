@@ -1,3 +1,5 @@
+use std::ops::FromResidual;
+
 use thiserror::Error;
 pub(crate) type Result<T = ()> = std::result::Result<T, MCloudError>;
 #[derive(Error, Debug)]
@@ -14,4 +16,10 @@ pub(crate) enum MCloudError {
     UnknownPacketType,
     #[error("Could not write to stream because of `{0}`")]
     CouldNotWriteToStream(String),
+}
+
+impl FromResidual<std::result::Result<Infallible, std::io::Error>> for MCloudError {
+    fn from_residual(residual: std::result::Result<Infallible, std::io::Error>) -> Self {
+        
+    }
 }
