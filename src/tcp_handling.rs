@@ -9,9 +9,10 @@ use crate::topics::{Message, Topics};
 use bytes::BytesMut;
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
-use mqtt_v5::topic::TopicFilter;
+use mqtt_v5::topic::{Topic, TopicFilter};
 use std::borrow::Cow;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
@@ -47,6 +48,17 @@ impl Client {
                     }
                 },
                 Err(ref e) => info!("ERROR {:?} connection: {:?}", addr, e),
+            }
+            if let Some(receiver) = &mut self.receiver {
+                match receiver.recv().await {
+                    Ok(Message::Publish(packet)) => {
+                        let send_packet = Packet::Publish(packet);
+                        Self::write_to_stream(&mut stream, &send_packet).await
+                    }
+                    Ok(Message::Subscribe(m)) => continue,
+                    Ok(Message::Unsubscribe(m)) => continue,
+                    Err(_) => continue,
+                };
             }
         }
     }

@@ -1,4 +1,5 @@
 use crate::error::{MCloudError, Result};
+use mqtt_v5::types::PublishPacket;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use tokio::sync::broadcast::Sender as BroadcastSender;
@@ -33,7 +34,7 @@ impl Topics {
 }
 #[derive(Clone, Debug, PartialEq)]
 pub enum Message {
-    Publish(String),
+    Publish(PublishPacket),
     Subscribe(String),
     Unsubscribe(String),
 }
