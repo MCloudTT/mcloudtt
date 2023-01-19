@@ -18,7 +18,7 @@ use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
-use tracing::info;
+use tracing::{debug, info};
 
 #[derive(Debug)]
 pub struct Client {
@@ -41,7 +41,7 @@ impl Client {
         loop {
             match stream.readable().await {
                 Ok(_) => match self.handle_packet(&mut stream).await {
-                    Ok(_) => continue,
+                    Ok(_) => {}
                     Err(_) => {
                         info!("Closing client {0}", &addr);
                         break;
@@ -50,15 +50,20 @@ impl Client {
                 Err(ref e) => info!("ERROR {:?} connection: {:?}", addr, e),
             }
             if let Some(receiver) = &mut self.receiver {
-                match receiver.recv().await {
-                    Ok(Message::Publish(packet)) => {
-                        let send_packet = Packet::Publish(packet);
-                        Self::write_to_stream(&mut stream, &send_packet).await
-                    }
-                    Ok(Message::Subscribe(m)) => continue,
-                    Ok(Message::Unsubscribe(m)) => continue,
-                    Err(_) => continue,
-                };
+                debug!("Client has receiver!");
+                if !receiver.is_empty() {
+                    debug!("Receiver has messages");
+                    match receiver.recv().await {
+                        Ok(Message::Publish(packet)) => {
+                            info!("Subscriber received new message");
+                            let send_packet = Packet::Publish(packet);
+                            Self::write_to_stream(&mut stream, &send_packet).await
+                        }
+                        Ok(Message::Subscribe(m)) => continue,
+                        Ok(Message::Unsubscribe(m)) => continue,
+                        Err(_) => continue,
+                    };
+                }
             }
         }
     }
@@ -74,6 +79,7 @@ impl Client {
     #[tracing::instrument]
     #[async_backtrace::framed]
     async fn handle_publish_packet(
+        &mut self,
         stream: &mut TcpStream,
         peer: &SocketAddr,
         packet: &PublishPacket,
@@ -85,6 +91,8 @@ impl Client {
         );
         // Packet with a QoS of 0 do get a PUBACK
         if packet.qos != QoS::AtMostOnce {
+            self.topics.lock().unwrap().publish(packet.clone());
+
             let puback = Packet::PublishAck(PublishAckPacket {
                 packet_id: packet.packet_id.unwrap(),
                 reason_code: mqtt_v5::types::PublishAckReason::Success,
@@ -202,9 +210,7 @@ impl Client {
                         Self::handle_connect_packet(stream, &peer, &p).await
                     }
                     Some(Packet::PingRequest) => Self::handle_pingreq_packet(stream).await,
-                    Some(Packet::Publish(p)) => {
-                        Self::handle_publish_packet(stream, &peer, &p).await
-                    }
+                    Some(Packet::Publish(p)) => self.handle_publish_packet(stream, &peer, &p).await,
                     Some(Packet::Subscribe(p)) => {
                         self.handle_subscribe_packet(stream, &peer, &p).await
                     }
