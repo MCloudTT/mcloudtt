@@ -10,7 +10,7 @@ pub struct Topics(pub(crate) BTreeMap<String, Channel>);
 impl Topics {
     /// Creates a new topic and returns a receiver for it. Errors if the topic already exists.
     pub(crate) fn add(&mut self, name: Cow<String>) -> Result<Receiver<Message>> {
-        let (sender, receiver) = channel((usize::MAX >> 1) - 1);
+        let (sender, receiver) = channel(1024);
         if self
             .0
             .insert(name.to_string(), Channel::new(sender))
@@ -47,6 +47,26 @@ impl Channel {
         Self {
             sender,
             messages: vec![],
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    mod topics {
+        use super::*;
+        #[test]
+        fn add() {
+            let mut topics = Topics::default();
+            let topic_name: Cow<String> = Cow::Owned("test".to_string());
+            topics.add(topic_name.clone()).unwrap();
+            assert_eq!(topics.0.len(), 1);
+            assert_eq!(topics.0.get("test").unwrap().messages.len(), 0);
+            assert!(matches!(
+                topics.add(topic_name),
+                Err(MCloudError::TopicAlreadyExists(_))
+            ));
         }
     }
 }
