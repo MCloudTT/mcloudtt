@@ -278,23 +278,49 @@ impl Client {
 mod tests {
     use super::*;
     use mqtt_v5::types::PacketType::Connect;
-    use std::io::Write;
+    use mqtt_v5::types::SubscriptionTopic;
+    use std::io::{Read, Write};
     use std::net::TcpStream;
+    use std::time::Duration;
     use tokio::net::TcpListener;
     use tokio::sync::mpsc::channel;
+    use tokio::time::sleep;
+
     #[tokio::test]
     async fn test_has_receiver() {
         let (tx, rx) = channel(1024);
         let topics = Arc::new(Mutex::new(Topics::default()));
-        let mut client = Client::new(tx, topics);
+        let mut client = Client::new(tx, topics.clone());
         assert!(client.receiver.is_none());
         let listener = TcpListener::bind("127.0.0.1:7357").await.unwrap();
         let mut writer = TcpStream::connect("127.0.0.1:7357").unwrap();
-        let mut buf = BytesMut::new();
-        let packet = encode_mqtt(
+        let mut connect = BytesMut::new();
+        encode_mqtt(
             &Packet::Connect(ConnectPacket::default()),
-            &mut buf,
+            &mut connect,
             ProtocolVersion::V500,
         );
+        let (stream, addr) = listener.accept().await.unwrap();
+        tokio::spawn(async move {
+            client.handle_raw_tcp_stream(stream, addr).await;
+        });
+        sleep(Duration::from_millis(100)).await;
+        println!("Writing connect packet");
+        writer.write_all(&connect).unwrap();
+        let mut buf = [0; 1024];
+        println!("Waiting for client to connect");
+        writer.read_exact(&mut buf).unwrap();
+        assert!(!buf.is_empty());
+        let mut subscription_packet = BytesMut::new();
+        encode_mqtt(
+            &Packet::Subscribe(SubscribePacket::new(vec![SubscriptionTopic::new_concrete(
+                "test",
+            )])),
+            &mut subscription_packet,
+            Default::default(),
+        );
+        writer.write_all(&subscription_packet).unwrap();
+        sleep(Duration::from_millis(100)).await;
+        assert_eq!(1, topics.lock().unwrap().0.len());
     }
 }
