@@ -16,6 +16,8 @@ pub(crate) enum MCloudError {
     UnknownPacketType,
     #[error("Could not write to stream because of `{0}`")]
     CouldNotWriteToStream(String),
+    #[error("No receivers found")]
+    NoReceiversFound,
 }
 
 impl FromResidual<std::result::Result<Infallible, std::io::Error>> for MCloudError {
