@@ -12,7 +12,7 @@ tokio-tungstenite = "0.18.0"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 futures-util = "0.3.25"
-mqtt-v5 = { git="https://github.com/Nereuxofficial/mqtt-broker", package="mqtt-v5" }
+mqtt-v5 = { git="https://github.com/Nereuxofficial/mqtt-broker", package="mqtt-v5", branch="dev" }
 bytes = "1"
 async-backtrace = "0.2"
 tracing-tree = "0.2.2"
