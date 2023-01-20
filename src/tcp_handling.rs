@@ -13,7 +13,7 @@ use mqtt_v5::topic::TopicFilter;
 use std::borrow::Cow;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{AsyncReadExt, Interest, ReadBuf};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
@@ -35,18 +35,23 @@ impl Client {
     }
     #[tracing::instrument]
     #[async_backtrace::framed]
-    pub async fn handle_raw_tcp_stream(&mut self, mut stream: TcpStream, addr: SocketAddr) {
+    pub async fn handle_raw_tcp_stream(
+        &mut self,
+        mut stream: TcpStream,
+        addr: SocketAddr,
+    ) -> Result<(), MCloudError> {
         // wait for new packets from client
         loop {
-            match stream.readable().await {
-                Ok(_) => match self.handle_packet(&mut stream).await {
+            // stream poll peek -> stream.poll_peek()
+            let ready = stream.ready(Interest::READABLE).await?;
+            if ready.is_readable() {
+                match self.handle_packet(&mut stream).await {
                     Ok(_) => {}
                     Err(_) => {
                         info!("Closing client {0}", &addr);
-                        break;
+                        return Err(MCloudError::ClientError((&addr).to_string()));
                     }
-                },
-                Err(ref e) => info!("ERROR {:?} connection: {:?}", addr, e),
+                };
             }
             if let Some(receiver) = &mut self.receiver {
                 debug!("Client has receiver!");
@@ -89,9 +94,11 @@ impl Client {
             peer, packet.payload, packet.topic
         );
         // Packet with a QoS of 0 do get a PUBACK
+        match self.topics.lock().unwrap().publish(packet.clone()) {
+            Ok(_) => info!("Send message to topic"),
+            Err(ref e) => info!("Could not send message to topic because of `{0}`", e),
+        };
         if packet.qos != QoS::AtMostOnce {
-            self.topics.lock().unwrap().publish(packet.clone());
-
             let puback = Packet::PublishAck(PublishAckPacket {
                 packet_id: packet.packet_id.unwrap(),
                 reason_code: mqtt_v5::types::PublishAckReason::Success,
