@@ -11,9 +11,9 @@ use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
 use mqtt_v5::topic::TopicFilter;
 use std::borrow::Cow;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use tokio::io::{AsyncReadExt, Interest, ReadBuf};
+use tokio::io::{AsyncReadExt, Interest};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
@@ -284,23 +284,32 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mqtt_v5::types::PacketType::Connect;
     use mqtt_v5::types::SubscriptionTopic;
-    use std::io::{Read, Write};
-    use std::net::TcpStream;
     use std::time::Duration;
+    use tokio::io::AsyncWriteExt;
     use tokio::net::TcpListener;
+    use tokio::net::TcpStream;
     use tokio::sync::mpsc::channel;
     use tokio::time::sleep;
 
+    async fn generate_tcp_stream_with_writer(port: String) -> (TcpListener, TcpStream) {
+        let listener = TcpListener::bind(format!("127.0.0.1:{port}"))
+            .await
+            .unwrap();
+        let writer = TcpStream::connect(format!("127.0.0.1:{port}"))
+            .await
+            .unwrap();
+        (listener, writer)
+    }
+    fn generate_client(topics: Arc<Mutex<Topics>>) -> Client {
+        let (tx, _) = channel(1024);
+        Client::new(tx, topics.clone())
+    }
     #[tokio::test]
     async fn test_has_receiver() {
-        let (tx, rx) = channel(1024);
         let topics = Arc::new(Mutex::new(Topics::default()));
-        let mut client = Client::new(tx, topics.clone());
-        assert!(client.receiver.is_none());
-        let listener = TcpListener::bind("127.0.0.1:7357").await.unwrap();
-        let mut writer = TcpStream::connect("127.0.0.1:7357").unwrap();
+        let mut client = generate_client(topics.clone());
+        let (listener, mut writer) = generate_tcp_stream_with_writer("1337".to_string()).await;
         let mut connect = BytesMut::new();
         encode_mqtt(
             &Packet::Connect(ConnectPacket::default()),
@@ -309,15 +318,19 @@ mod tests {
         );
         let (stream, addr) = listener.accept().await.unwrap();
         tokio::spawn(async move {
-            client.handle_raw_tcp_stream(stream, addr).await;
+            client.handle_raw_tcp_stream(stream, addr).await.unwrap();
         });
-        sleep(Duration::from_millis(100)).await;
-        println!("Writing connect packet");
-        writer.write_all(&connect).unwrap();
+        writer.write_all(&connect).await.unwrap();
+        writer.flush().await.unwrap();
+        sleep(Duration::from_millis(20)).await;
         let mut buf = [0; 1024];
-        println!("Waiting for client to connect");
-        writer.read_exact(&mut buf).unwrap();
+        writer.try_read(&mut buf).unwrap();
         assert!(!buf.is_empty());
+        let response_packet =
+            decode_mqtt(&mut BytesMut::from(buf.as_slice()), ProtocolVersion::V500)
+                .unwrap()
+                .unwrap();
+        assert!(matches!(response_packet, Packet::ConnectAck(_)));
         let mut subscription_packet = BytesMut::new();
         encode_mqtt(
             &Packet::Subscribe(SubscribePacket::new(vec![SubscriptionTopic::new_concrete(
@@ -326,7 +339,8 @@ mod tests {
             &mut subscription_packet,
             Default::default(),
         );
-        writer.write_all(&subscription_packet).unwrap();
+        writer.write_all(&subscription_packet).await.unwrap();
+        writer.flush().await.unwrap();
         sleep(Duration::from_millis(100)).await;
         assert_eq!(1, topics.lock().unwrap().0.len());
     }

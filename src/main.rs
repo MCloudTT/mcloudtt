@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 pub(crate) mod error;
 mod tcp_handling;
 mod topics;
