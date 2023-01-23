@@ -41,11 +41,35 @@ impl Client {
         mut stream: TcpStream,
         addr: SocketAddr,
     ) -> Result<(), MCloudError> {
-        // wait for new packets from client
         loop {
-            // stream poll peek -> stream.poll_peek()
-            let ready = stream.ready(Interest::READABLE).await?;
-            if ready.is_readable() {
+            if let Some(receiver) = &mut self.receiver {
+                debug!("Client has receiver!");
+
+                tokio::select! {
+                    _ = stream.ready(Interest::READABLE) => {
+                        match self.handle_packet(&mut stream).await {
+                            Ok(_) => {}
+                            Err(_) => {
+                                info!("Closing client {0}", &addr);
+                                return Err(MCloudError::ClientError((&addr).to_string()));
+                            }
+                        };
+                    }
+                    msg = receiver.recv() => {
+                        debug!("Receiver has messages");
+                        match msg {
+                            Ok(Message::Publish(packet)) => {
+                                info!("Subscriber received new message");
+                                let send_packet = Packet::Publish(packet);
+                                Self::write_to_stream(&mut stream, &send_packet).await
+                            }
+                            Ok(Message::Subscribe(m)) => continue,
+                            Ok(Message::Unsubscribe(m)) => continue,
+                            Err(_) => continue,
+                        };
+                    }
+                }
+            } else {
                 match self.handle_packet(&mut stream).await {
                     Ok(_) => {}
                     Err(_) => {
@@ -53,22 +77,6 @@ impl Client {
                         return Err(MCloudError::ClientError((&addr).to_string()));
                     }
                 };
-            }
-            if let Some(receiver) = &mut self.receiver {
-                debug!("Client has receiver!");
-                if !receiver.is_empty() {
-                    debug!("Receiver has messages");
-                    match receiver.recv().await {
-                        Ok(Message::Publish(packet)) => {
-                            info!("Subscriber received new message");
-                            let send_packet = Packet::Publish(packet);
-                            Self::write_to_stream(&mut stream, &send_packet).await
-                        }
-                        Ok(Message::Subscribe(m)) => continue,
-                        Ok(Message::Unsubscribe(m)) => continue,
-                        Err(_) => continue,
-                    };
-                }
             }
         }
     }
