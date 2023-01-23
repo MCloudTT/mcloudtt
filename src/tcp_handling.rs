@@ -9,11 +9,12 @@ use crate::topics::{Message, Topics};
 use bytes::BytesMut;
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
-use mqtt_v5::topic::TopicFilter;
+use mqtt_v5::topic::{Topic, TopicFilter};
 use std::borrow::Cow;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{AsyncReadExt, Interest};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
@@ -35,18 +36,23 @@ impl Client {
     }
     #[tracing::instrument]
     #[async_backtrace::framed]
-    pub async fn handle_raw_tcp_stream(&mut self, mut stream: TcpStream, addr: SocketAddr) {
+    pub async fn handle_raw_tcp_stream(
+        &mut self,
+        mut stream: TcpStream,
+        addr: SocketAddr,
+    ) -> Result<(), MCloudError> {
         // wait for new packets from client
         loop {
-            match stream.readable().await {
-                Ok(_) => match self.handle_packet(&mut stream).await {
+            // stream poll peek -> stream.poll_peek()
+            let ready = stream.ready(Interest::READABLE).await?;
+            if ready.is_readable() {
+                match self.handle_packet(&mut stream).await {
                     Ok(_) => {}
                     Err(_) => {
                         info!("Closing client {0}", &addr);
-                        break;
+                        return Err(MCloudError::ClientError((&addr).to_string()));
                     }
-                },
-                Err(ref e) => info!("ERROR {:?} connection: {:?}", addr, e),
+                };
             }
             if let Some(receiver) = &mut self.receiver {
                 debug!("Client has receiver!");
@@ -89,9 +95,15 @@ impl Client {
             peer, packet.payload, packet.topic
         );
         // Packet with a QoS of 0 do get a PUBACK
+        match self.topics.lock().unwrap().publish(packet.clone()) {
+            Ok(_) => info!("Send message to topic"),
+            Err(ref e) => info!("Could not send message to topic because of `{0}`", e),
+        };
         if packet.qos != QoS::AtMostOnce {
-            self.topics.lock().unwrap().publish(packet.clone());
-
+            match self.topics.lock().unwrap().publish(packet.clone()) {
+                Ok(_) => info!("Send message to topic"),
+                Err(ref e) => info!("Could not send message to topic because of `{0}`", e),
+            };
             let puback = Packet::PublishAck(PublishAckPacket {
                 packet_id: packet.packet_id.unwrap(),
                 reason_code: mqtt_v5::types::PublishAckReason::Success,
@@ -194,7 +206,9 @@ impl Client {
         match stream.read(&mut buf).await {
             Ok(0) => {
                 info!("{0} disconnected unexpectedly", &peer);
-                Err(MCloudError::UnexpectedClientDisconnected(peer.to_string()))
+                Err(MCloudError::UnexpectedClientDisconnected(
+                    (&peer).to_string(),
+                ))
             }
             Ok(n) => {
                 info!("Read {:?} bytes", n);
@@ -277,24 +291,64 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mqtt_v5::types::PacketType::Connect;
-    use std::io::Write;
-    use std::net::TcpStream;
+    use mqtt_v5::types::SubscriptionTopic;
+    use std::time::Duration;
+    use tokio::io::AsyncWriteExt;
     use tokio::net::TcpListener;
+    use tokio::net::TcpStream;
     use tokio::sync::mpsc::channel;
+    use tokio::time::sleep;
+
+    async fn generate_tcp_stream_with_writer(port: String) -> (TcpListener, TcpStream) {
+        let listener = TcpListener::bind(format!("127.0.0.1:{port}"))
+            .await
+            .unwrap();
+        let writer = TcpStream::connect(format!("127.0.0.1:{port}"))
+            .await
+            .unwrap();
+        (listener, writer)
+    }
+    fn generate_client(topics: Arc<Mutex<Topics>>) -> Client {
+        let (tx, _) = channel(1024);
+        Client::new(tx, topics.clone())
+    }
     #[tokio::test]
     async fn test_has_receiver() {
-        let (tx, rx) = channel(1024);
         let topics = Arc::new(Mutex::new(Topics::default()));
-        let mut client = Client::new(tx, topics);
-        assert!(client.receiver.is_none());
-        let listener = TcpListener::bind("127.0.0.1:7357").await.unwrap();
-        let mut writer = TcpStream::connect("127.0.0.1:7357").unwrap();
-        let mut buf = BytesMut::new();
-        let packet = encode_mqtt(
+        let mut client = generate_client(topics.clone());
+        let (listener, mut writer) = generate_tcp_stream_with_writer("1337".to_string()).await;
+        let mut connect = BytesMut::new();
+        encode_mqtt(
             &Packet::Connect(ConnectPacket::default()),
-            &mut buf,
+            &mut connect,
             ProtocolVersion::V500,
         );
+        let (stream, addr) = listener.accept().await.unwrap();
+        tokio::spawn(async move {
+            client.handle_raw_tcp_stream(stream, addr).await.unwrap();
+        });
+        writer.write_all(&connect).await.unwrap();
+        writer.flush().await.unwrap();
+        sleep(Duration::from_millis(20)).await;
+        let mut buf = [0; 1024];
+        writer.try_read(&mut buf).unwrap();
+        assert!(!buf.is_empty());
+        let response_packet =
+            decode_mqtt(&mut BytesMut::from(buf.as_slice()), ProtocolVersion::V500)
+                .unwrap()
+                .unwrap();
+        assert!(matches!(response_packet, Packet::ConnectAck(_)));
+        let mut subscription_packet = BytesMut::new();
+        encode_mqtt(
+            &Packet::Subscribe(SubscribePacket::new(vec![SubscriptionTopic::new_concrete(
+                "test",
+            )])),
+            &mut subscription_packet,
+            Default::default(),
+        );
+        writer.write_all(&subscription_packet).await.unwrap();
+        writer.flush().await.unwrap();
+        sleep(Duration::from_millis(100)).await;
+        assert_eq!(1, topics.lock().unwrap().0.len());
     }
 }
