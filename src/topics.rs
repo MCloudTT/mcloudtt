@@ -24,7 +24,7 @@ impl Topics {
     /// Returns a receiver for the given topic
     pub(crate) fn subscribe(&mut self, name: Cow<String>) -> Result<Receiver<Message>> {
         dbg!("subscribing to topic {}", name.clone());
-        if let Some(channel) = self.0.get_mut(&name) {
+        if let Some(channel) = self.0.get_mut(&name.to_string()) {
             Ok(channel.sender.subscribe())
         } else {
             info!("Topic {:?} does not exist... Creating it", name);
