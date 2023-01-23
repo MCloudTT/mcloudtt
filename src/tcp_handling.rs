@@ -9,10 +9,10 @@ use crate::topics::{Message, Topics};
 use bytes::BytesMut;
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
-use mqtt_v5::topic::{Topic, TopicFilter};
+use mqtt_v5::topic::TopicFilter;
 use std::borrow::Cow;
 use std::net::SocketAddr;
-use std::str::FromStr;
+
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, Interest};
 use tokio::net::TcpStream;
@@ -206,9 +206,7 @@ impl Client {
         match stream.read(&mut buf).await {
             Ok(0) => {
                 info!("{0} disconnected unexpectedly", &peer);
-                Err(MCloudError::UnexpectedClientDisconnected(
-                    (&peer).to_string(),
-                ))
+                Err(MCloudError::UnexpectedClientDisconnected(peer.to_string()))
             }
             Ok(n) => {
                 info!("Read {:?} bytes", n);
@@ -310,7 +308,7 @@ mod tests {
     }
     fn generate_client(topics: Arc<Mutex<Topics>>) -> Client {
         let (tx, _) = channel(1024);
-        Client::new(tx, topics.clone())
+        Client::new(tx, topics)
     }
     #[tokio::test]
     async fn test_has_receiver() {
