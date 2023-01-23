@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: mcloudtt
+  name: mcloudtt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcloudtt
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: mcloudtt
+    spec:
+      containers:
+      - image: gcr.io/azubi-knowhow-building/mcloudtt
+        name: mcloudtt
+        imagePullPolicy: Always
+        resources: {}
+        ports:
+          - containerPort: 1883 
+status: {}
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcloudtt
+  labels:
+    run: mcloudtt
+spec:
+  ports:
+  - port: 1883
+    protocol: TCP
+  selector:
+    app: mcloudtt
+  type: LoadBalancer
