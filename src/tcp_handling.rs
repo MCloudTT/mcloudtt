@@ -95,6 +95,10 @@ impl Client {
             peer, packet.payload, packet.topic
         );
         // Packet with a QoS of 0 do get a PUBACK
+        match self.topics.lock().unwrap().publish(packet.clone()) {
+            Ok(_) => info!("Send message to topic"),
+            Err(ref e) => info!("Could not send message to topic because of `{0}`", e),
+        };
         if packet.qos != QoS::AtMostOnce {
             match self.topics.lock().unwrap().publish(packet.clone()) {
                 Ok(_) => info!("Send message to topic"),
