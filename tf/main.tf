@@ -5,6 +5,10 @@ terraform {
       version = "3.63.0"
     }
   }
+
+  backend "local" {
+    path = "../../tf/terraform.tfstate"
+  }
 }
 
 provider "google" {
