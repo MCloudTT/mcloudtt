@@ -1,56 +1,26 @@
 use crate::error::MCloudError;
-use crate::topics::{
-    Message,
-    Topics,
-};
+use crate::topics::{Message, Topics};
 use bytes::BytesMut;
-use futures_util::future::{
-    select_all,
-    SelectAll,
-};
-use futures_util::stream::FuturesUnordered;
-use futures_util::{
-    pin_mut,
-    StreamExt,
-};
+
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
 use mqtt_v5::topic::TopicFilter;
-use mqtt_v5::types::properties::{
-    MaximumPacketSize,
-    MaximumQos,
-};
+use mqtt_v5::types::properties::{MaximumPacketSize, MaximumQos};
 use mqtt_v5::types::{
-    ConnectAckPacket,
-    ConnectPacket,
-    ConnectReason,
-    DisconnectPacket,
-    Packet,
-    ProtocolVersion,
-    PublishAckPacket,
-    PublishPacket,
-    QoS,
-    SubscribeAckPacket,
-    SubscribeAckReason,
-    SubscribePacket,
+    ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, Packet, ProtocolVersion,
+    PublishAckPacket, PublishPacket, QoS, SubscribeAckPacket, SubscribeAckReason, SubscribePacket,
 };
 use std::borrow::Cow;
+use std::future::Future;
 use std::net::SocketAddr;
-use std::sync::{
-    Arc,
-    Mutex,
-};
-use tokio::io::{
-    AsyncReadExt,
-    Interest,
-};
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
+use tokio::io::{AsyncReadExt, Interest};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
-use tracing::{
-    debug,
-    info,
-};
+use tracing::{debug, info};
 
 #[derive(Debug)]
 pub struct Client {
@@ -59,6 +29,33 @@ pub struct Client {
     pub topics: Arc<Mutex<Topics>>,
 }
 
+struct ReceiverFuture<'a> {
+    receiver: &'a Vec<Receiver<Message>>,
+}
+
+impl<'a> ReceiverFuture<'a> {
+    pub fn new(receiver: &'a Vec<Receiver<Message>>) -> Self {
+        Self { receiver }
+    }
+}
+
+impl Future for ReceiverFuture<'_> {
+    type Output = usize;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if let Some(index) = self
+            .receiver
+            .iter()
+            .enumerate()
+            .find(|(_, recv)| !recv.is_empty())
+        {
+            Poll::Ready(index.0)
+        } else {
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    }
+}
 impl Client {
     pub fn new(sender: Sender<Message>, topics: Arc<Mutex<Topics>>) -> Self {
         Self {
@@ -70,11 +67,17 @@ impl Client {
 
     #[tracing::instrument]
     #[async_backtrace::framed]
-    pub async fn handle_raw_tcp_stream(&mut self, mut stream: TcpStream, addr: SocketAddr) -> Result<(), MCloudError> {
+    pub async fn handle_raw_tcp_stream(
+        &mut self,
+        mut stream: TcpStream,
+        addr: SocketAddr,
+    ) -> Result<(), MCloudError> {
         loop {
+            let my_future = ReceiverFuture {
+                receiver: &self.receivers,
+            };
             debug!("Receiver has messages");
-
-            tokio::select!{
+            tokio::select! {
                 _ = stream.ready(Interest::READABLE) => {
                     match self.handle_packet(&mut stream).await {
                         Ok(_) => { },
@@ -84,21 +87,17 @@ impl Client {
                         },
                     };
                 }
-                message = {
-                    let mut recv: FuturesUnordered<_> =
-                        self.receivers.iter_mut().map(|recv| recv.recv()).collect();
-                    recv.next()
-                }
-                => {
+                index = ReceiverFuture::new(&self.receivers)=> {
+                    let message = self.receivers[index].recv().await;
                     debug!("Receiver has messages");
                     match message {
-                        Some(Ok(Message::Publish(packet))) => {
+                        Ok(Message::Publish(packet)) => {
                             info!("Subscriber received new message");
                             let send_packet = Packet::Publish(packet);
                             Self::write_to_stream(&mut stream, &send_packet).await
                         },
-                        Some(Ok(Message::Subscribe(m))) => continue,
-                        Some(Ok(Message::Unsubscribe(m))) => continue,
+                        Ok(Message::Subscribe(_)) => continue,
+                        Ok(Message::Unsubscribe(_)) => continue,
                         _ => continue,
                     };
                 }
@@ -124,7 +123,10 @@ impl Client {
         packet: &PublishPacket,
     ) -> Result<(), MCloudError> {
         // TODO: process payload
-        info!("{:?} published {:?} to {:?}", peer, packet.payload, packet.topic);
+        info!(
+            "{:?} published {:?} to {:?}",
+            peer, packet.payload, packet.topic
+        );
 
         // Packet with a QoS of 0 do get a PUBACK
         match self.topics.lock().unwrap().publish(packet.clone()) {
@@ -170,18 +172,40 @@ impl Client {
         for sub_topic in &packet.subscription_topics {
             let topic_filter = sub_topic.topic_filter.clone();
             match topic_filter {
-                TopicFilter::Concrete { filter: f, level_count: _ } => {
-                    sub_ack_packet.reason_codes.push(SubscribeAckReason::GrantedQoSZero);
-                    self.receivers.push(self.topics.lock().unwrap().subscribe(Cow::Owned(f.clone())).unwrap());
+                TopicFilter::Concrete {
+                    filter: f,
+                    level_count: _,
+                } => {
+                    sub_ack_packet
+                        .reason_codes
+                        .push(SubscribeAckReason::GrantedQoSZero);
+                    self.receivers.push(
+                        self.topics
+                            .lock()
+                            .unwrap()
+                            .subscribe(Cow::Owned(f.clone()))
+                            .unwrap(),
+                    );
                     info!("Client {:?} subscribed to {:?}", peer, &f);
-                },
-                TopicFilter::Wildcard { filter: _, level_count: _ } => sub_ack_packet
+                }
+                TopicFilter::Wildcard {
+                    filter: _,
+                    level_count: _,
+                } => sub_ack_packet
                     .reason_codes
                     .push(SubscribeAckReason::WildcardSubscriptionsNotSupported),
-                TopicFilter::SharedConcrete { group_name: _, filter: _, level_count: _ } => sub_ack_packet
+                TopicFilter::SharedConcrete {
+                    group_name: _,
+                    filter: _,
+                    level_count: _,
+                } => sub_ack_packet
                     .reason_codes
                     .push(SubscribeAckReason::SharedSubscriptionsNotSupported),
-                TopicFilter::SharedWildcard { group_name: _, filter: _, level_count: _ } => sub_ack_packet
+                TopicFilter::SharedWildcard {
+                    group_name: _,
+                    filter: _,
+                    level_count: _,
+                } => sub_ack_packet
                     .reason_codes
                     .push(SubscribeAckReason::SharedSubscriptionsNotSupported),
             }
@@ -203,7 +227,7 @@ impl Client {
             Ok(e) => {
                 info!("Written {} bytes", e);
                 Ok(())
-            },
+            }
             Err(ref e) => Err(MCloudError::CouldNotWriteToStream(e.to_string())),
         }
     }
@@ -218,27 +242,29 @@ impl Client {
             Ok(0) => {
                 info!("{0} disconnected unexpectedly", &peer);
                 Err(MCloudError::UnexpectedClientDisconnected(peer.to_string()))
-            },
+            }
             Ok(n) => {
                 info!("Read {:?} bytes", n);
-                let packet = decode_mqtt(&mut BytesMut::from(buf.as_slice()), ProtocolVersion::V500).unwrap();
+                let packet =
+                    decode_mqtt(&mut BytesMut::from(buf.as_slice()), ProtocolVersion::V500)
+                        .unwrap();
                 info!("From {:?}: Received packet: {:?}", peer, packet);
                 match packet {
                     Some(Packet::Connect(p)) => {
                         Self::handle_connect_packet(stream, &peer, &p).await
-                    },
+                    }
                     Some(Packet::PingRequest) => Self::handle_pingreq_packet(stream).await,
                     Some(Packet::Publish(p)) => self.handle_publish_packet(stream, &peer, &p).await,
                     Some(Packet::Subscribe(p)) => {
                         self.handle_subscribe_packet(stream, &peer, &p).await
-                    },
+                    }
                     Some(Packet::Disconnect(p)) => Self::handle_disconnect_packet(&peer, &p).await,
                     _ => {
                         info!("No known packet-type");
                         Err(MCloudError::UnknownPacketType)
-                    },
+                    }
                 }
-            },
+            }
             Err(ref e) => Err(MCloudError::ClientError(e.kind().to_string())),
         }
     }
@@ -252,9 +278,7 @@ impl Client {
     ) -> Result<(), MCloudError> {
         info!(
             "Connection request from peer {:?} with:\nname: {:?}\nversion: {:?}",
-            peer,
-            packet.client_id,
-            packet.protocol_version
+            peer, packet.client_id, packet.protocol_version
         );
 
         // TODO: check if versions match
@@ -288,7 +312,10 @@ impl Client {
     /// Log which client disconnected and the reason
     #[tracing::instrument]
     #[async_backtrace::framed]
-    async fn handle_disconnect_packet(peer: &SocketAddr, packet: &DisconnectPacket) -> Result<(), MCloudError> {
+    async fn handle_disconnect_packet(
+        peer: &SocketAddr,
+        packet: &DisconnectPacket,
+    ) -> Result<(), MCloudError> {
         let reason = packet.reason_code;
 
         // handle DisconnectWithWill?
@@ -309,8 +336,12 @@ mod tests {
     use tokio::time::sleep;
 
     async fn generate_tcp_stream_with_writer(port: String) -> (TcpListener, TcpStream) {
-        let listener = TcpListener::bind(format!("127.0.0.1:{port}")).await.unwrap();
-        let writer = TcpStream::connect(format!("127.0.0.1:{port}")).await.unwrap();
+        let listener = TcpListener::bind(format!("127.0.0.1:{port}"))
+            .await
+            .unwrap();
+        let writer = TcpStream::connect(format!("127.0.0.1:{port}"))
+            .await
+            .unwrap();
         (listener, writer)
     }
 
@@ -325,7 +356,11 @@ mod tests {
         let mut client = generate_client(topics.clone());
         let (listener, mut writer) = generate_tcp_stream_with_writer("1337".to_string()).await;
         let mut connect = BytesMut::new();
-        encode_mqtt(&Packet::Connect(ConnectPacket::default()), &mut connect, ProtocolVersion::V500);
+        encode_mqtt(
+            &Packet::Connect(ConnectPacket::default()),
+            &mut connect,
+            ProtocolVersion::V500,
+        );
         let (stream, addr) = listener.accept().await.unwrap();
         tokio::spawn(async move {
             client.handle_raw_tcp_stream(stream, addr).await.unwrap();
@@ -337,11 +372,15 @@ mod tests {
         writer.try_read(&mut buf).unwrap();
         assert!(!buf.is_empty());
         let response_packet =
-            decode_mqtt(&mut BytesMut::from(buf.as_slice()), ProtocolVersion::V500).unwrap().unwrap();
+            decode_mqtt(&mut BytesMut::from(buf.as_slice()), ProtocolVersion::V500)
+                .unwrap()
+                .unwrap();
         assert!(matches!(response_packet, Packet::ConnectAck(_)));
         let mut subscription_packet = BytesMut::new();
         encode_mqtt(
-            &Packet::Subscribe(SubscribePacket::new(vec![SubscriptionTopic::new_concrete("test")])),
+            &Packet::Subscribe(SubscribePacket::new(vec![SubscriptionTopic::new_concrete(
+                "test",
+            )])),
             &mut subscription_packet,
             Default::default(),
         );
