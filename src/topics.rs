@@ -38,7 +38,7 @@ impl Topics {
             send_message(&mut channel.sender, Message::Publish(packet))?;
         } else {
             info!("Topic {:?} does not exist... Creating it", topic_name);
-            let _ = self.add(Cow::Owned(topic_name.clone()));
+            let _ = self.add(Cow::Owned(topic_name.clone()))?;
             let channel = self.0.get_mut(&topic_name).unwrap();
             send_message(&mut channel.sender, Message::Publish(packet))?;
         }

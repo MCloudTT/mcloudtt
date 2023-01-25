@@ -79,7 +79,7 @@ impl Client {
                         Ok(_) => { },
                         Err(_) => {
                             info!("Closing client {0}", &addr);
-                            return Err(MCloudError::ClientError((&addr).to_string()));
+                            return Err(MCloudError::ClientError(addr.to_string()));
                         },
                     };
                 }
@@ -90,7 +90,7 @@ impl Client {
                         Ok(Message::Publish(packet)) => {
                             info!("Subscriber received new message");
                             let send_packet = Packet::Publish(packet);
-                            Self::write_to_stream(&mut stream, &send_packet).await
+                            Self::write_to_stream(&mut stream, &send_packet).await?;
                         },
                         Ok(Message::Subscribe(_)) => continue,
                         Ok(Message::Unsubscribe(_)) => continue,
