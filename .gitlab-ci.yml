@@ -12,9 +12,8 @@ stable:cargo:
     - cargo fmt --all -- --check
 
 terraform:
-  image: hashicorp/terraform:light
   stage: test
   script:
-    - terraform -chdir=infra init
-    - terraform -chdir=infra fmt --check
-    - terraform -chdir=infra validate
+    - gitlab-terraform -chdir=infra init
+    - gitlab-terraform -chdir=infra fmt --check
+    - gitlab-terraform -chdir=infra validate
