@@ -73,10 +73,6 @@ impl Client {
         addr: SocketAddr,
     ) -> Result<(), MCloudError> {
         loop {
-            let my_future = ReceiverFuture {
-                receiver: &self.receivers,
-            };
-            debug!("Receiver has messages");
             tokio::select! {
                 _ = stream.ready(Interest::READABLE) => {
                     match self.handle_packet(&mut stream).await {
@@ -89,7 +85,7 @@ impl Client {
                 }
                 index = ReceiverFuture::new(&self.receivers)=> {
                     let message = self.receivers[index].recv().await;
-                    debug!("Receiver has messages");
+                    debug!("Receiver has message: {:?}", message);
                     match message {
                         Ok(Message::Publish(packet)) => {
                             info!("Subscriber received new message");
