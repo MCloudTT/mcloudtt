@@ -1,3 +1,7 @@
+stages:
+  - test
+  - terraform
+
 stable:cargo:
   image: rustdocker/rust:stable
   stage: test
@@ -12,8 +16,12 @@ stable:cargo:
     - cargo fmt --all -- --check
 
 terraform:
-  stage: test
+  image: registry.gitlab.com/gitlab-org/terraform-images/stable:latest
+  variables:
+    TF_ROOT: infra
+
+  stage: terraform
   script:
-    - gitlab-terraform -chdir=infra init
-    - gitlab-terraform -chdir=infra fmt --check
-    - gitlab-terraform -chdir=infra validate
+    - gitlab-terraform init
+    - gitlab-terraform fmt --check
+    - gitlab-terraform validate
