@@ -10,3 +10,11 @@ stable:cargo:
     - cargo build
     - cargo doc
     - cargo fmt --all -- --check
+
+terraform:
+  image: hashicorp/terraform:light
+  stage: test
+  script:
+    - terraform -chdir=infra init
+    - terraform -chdir=infra fmt --check
+    - terraform -chdir=infra validate
