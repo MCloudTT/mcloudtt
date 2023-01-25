@@ -1,6 +1,5 @@
 stages:
   - test
-  - terraform
 
 stable:cargo:
   image: rustdocker/rust:stable
@@ -20,7 +19,7 @@ terraform:
   variables:
     TF_ROOT: infra
 
-  stage: terraform
+  stage: test
   script:
     - gitlab-terraform init
     - gitlab-terraform fmt --check
