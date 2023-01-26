@@ -5,10 +5,17 @@ mod topics;
 
 use crate::topics::{Message, Topics};
 
-use std::sync::{Arc, Mutex};
+use std::{
+    fs::File,
+    io::{self, BufRead, BufReader},
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
+use rustls_pemfile::{certs, rsa_private_keys};
 use tokio::net::TcpListener;
 
+use tokio_rustls::rustls::{self, Certificate, PrivateKey};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -35,11 +42,39 @@ async fn main() -> Result {
     info!("Starting MCloudTT!");
     let topics = Arc::new(Mutex::new(Topics::default()));
     let listener = TcpListener::bind(TCP_LISTENER_ADDR).await?;
+
+    //TLS
+    let certs = load_certs(Path::new("certs/cert.pem"))?;
+    let mut keys = load_keys(Path::new("certs/key.pem"))?;
+
+    let config = rustls::ServerConfig::builder()
+        .with_safe_defaults()
+        .with_no_client_auth()
+        .with_single_cert(certs, keys.remove(0))
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+
+    let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
+
+    // TODO: Handle fallback to non-tls?
     while let Ok((stream, addr)) = listener.accept().await {
+        let tls_acceptor = tls_acceptor.clone();
+        let mut stream = tls_acceptor.accept(stream).await?;
         info!("Peer connected: {:?}", addr);
         let (sender, _receiver) = tokio::sync::mpsc::channel::<Message>(200);
         let mut client = Client::new(sender, topics.clone());
         tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
     }
     Ok(())
+}
+
+fn load_certs(path: &Path) -> io::Result<Vec<Certificate>> {
+    certs(&mut BufReader::new(File::open(path)?))
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid cert"))
+        .map(|mut certs| certs.drain(..).map(Certificate).collect())
+}
+
+fn load_keys(path: &Path) -> io::Result<Vec<PrivateKey>> {
+    rsa_private_keys(&mut BufReader::new(File::open(path)?))
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))
+        .map(|mut keys| keys.drain(..).map(PrivateKey).collect())
 }
