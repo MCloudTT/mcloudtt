@@ -1,18 +1,36 @@
 stages:
   - test
 
-stable:cargo:
+cargo-fmt:
   image: rustdocker/rust:stable
   stage: test
   script:
-    - free -h
-    - lscpu
+    - cargo fmt --all -- --check
+
+cargo-check:
+  image: rustdocker/rust:stable
+  stage: test
+  script:
     - cargo check --verbose
-    - cargo test --verbose --jobs 1
-    - cargo build --release
+
+cargo-build:
+  image: rustdocker/rust:stable
+  stage: test
+  script:
     - cargo build
     - cargo doc
-    - cargo fmt --all -- --check
+
+cargo-build-release:
+  image: rustdocker/rust:stable
+  stage: test
+  script:
+    - cargo build --release
+
+cargo-test:
+  image: rustdocker/rust:stable
+  stage: test
+  script:
+    - cargo test --verbose --jobs 1
 
 terraform:
   image: registry.gitlab.com/gitlab-org/terraform-images/stable:latest
