@@ -377,7 +377,7 @@ mod tests {
         let topics = Arc::new(Mutex::new(Topics::default()));
         let mut client = generate_client(topics.clone());
         let (listener, mut writer) = generate_tcp_stream_with_writer("1337".to_string()).await;
-        let mut connect = get_packet(&Packet::Connect(ConnectPacket::default()));
+        let connect = get_packet(&Packet::Connect(ConnectPacket::default()));
         let (stream, addr) = listener.accept().await.unwrap();
         tokio::spawn(async move {
             client.handle_raw_tcp_stream(stream, addr).await.unwrap();
@@ -393,7 +393,7 @@ mod tests {
                 .unwrap()
                 .unwrap();
         assert!(matches!(response_packet, Packet::ConnectAck(_)));
-        let mut subscription_packet = get_packet(&Packet::Subscribe(SubscribePacket::new(vec![
+        let subscription_packet = get_packet(&Packet::Subscribe(SubscribePacket::new(vec![
             SubscriptionTopic::new_concrete("test"),
         ])));
         writer.write_all(&subscription_packet).await.unwrap();
@@ -422,20 +422,19 @@ mod tests {
                 .unwrap()
                 .unwrap();
         assert!(matches!(response_packet, Packet::ConnectAck(_)));
-        let mut subscription_packet = get_packet(&Packet::Subscribe(SubscribePacket::new(vec![
+        let subscription_packet = get_packet(&Packet::Subscribe(SubscribePacket::new(vec![
             SubscriptionTopic::new_concrete("test"),
         ])));
         writer.write_all(&subscription_packet).await.unwrap();
         writer.flush().await.unwrap();
         sleep(Duration::from_millis(20)).await;
         assert_eq!(1, topics.lock().unwrap().0.len());
-        let mut unsubscribe_packet =
-            get_packet(&Packet::Unsubscribe(UnsubscribePacket::new(vec![
-                TopicFilter::Concrete {
-                    filter: "test".to_string(),
-                    level_count: 1,
-                },
-            ])));
+        let unsubscribe_packet = get_packet(&Packet::Unsubscribe(UnsubscribePacket::new(vec![
+            TopicFilter::Concrete {
+                filter: "test".to_string(),
+                level_count: 1,
+            },
+        ])));
         writer.write_all(&unsubscribe_packet).await.unwrap();
         writer.flush().await.unwrap();
         sleep(Duration::from_millis(100)).await;
