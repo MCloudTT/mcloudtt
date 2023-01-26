@@ -45,7 +45,7 @@ impl Future for ReceiverFuture<'_> {
     type Output = String;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if let Some(index) = self.receiver.iter().find(|(key, recv)| !recv.is_empty()) {
+        if let Some(index) = self.receiver.iter().find(|(_, recv)| !recv.is_empty()) {
             Poll::Ready(index.0.to_string())
         } else {
             cx.waker().wake_by_ref();
@@ -182,20 +182,11 @@ impl Client {
                 } => sub_ack_packet
                     .reason_codes
                     .push(SubscribeAckReason::WildcardSubscriptionsNotSupported),
-                TopicFilter::SharedConcrete {
-                    group_name: _,
-                    filter: _,
-                    level_count: _,
-                } => sub_ack_packet
-                    .reason_codes
-                    .push(SubscribeAckReason::SharedSubscriptionsNotSupported),
-                TopicFilter::SharedWildcard {
-                    group_name: _,
-                    filter: _,
-                    level_count: _,
-                } => sub_ack_packet
-                    .reason_codes
-                    .push(SubscribeAckReason::SharedSubscriptionsNotSupported),
+                TopicFilter::SharedConcrete { .. } | TopicFilter::SharedWildcard { .. } => {
+                    sub_ack_packet
+                        .reason_codes
+                        .push(SubscribeAckReason::SharedSubscriptionsNotSupported)
+                }
             }
         }
         let suback = Packet::SubscribeAck(sub_ack_packet);
@@ -320,7 +311,32 @@ impl Client {
         packet: &UnsubscribePacket,
     ) -> Result {
         info!("{:?} unsubscribed from {:?}", peer, packet.topic_filters);
-        todo!();
+        let mut ack = UnsubscribeAckPacket {
+            packet_id: packet.packet_id,
+            reason_codes: vec![],
+            user_properties: vec![],
+            reason_string: None,
+        };
+        packet.topic_filters.iter().for_each(|topic| match topic {
+            TopicFilter::Concrete {
+                filter,
+                level_count: _,
+            } => {
+                info!("Unsubscribing from {:?}", filter);
+                match self.receivers.remove(filter) {
+                    Some(_) => ack.reason_codes.push(UnsubscribeAckReason::Success),
+                    None => ack
+                        .reason_codes
+                        .push(UnsubscribeAckReason::NoSubscriptionExisted),
+                }
+            }
+            _ => ack
+                .reason_codes
+                .push(UnsubscribeAckReason::ImplementationSpecificError),
+        });
+
+        let packet = Packet::UnsubscribeAck(ack);
+        Self::write_to_stream(stream, &packet).await
     }
 }
 
@@ -350,17 +366,18 @@ mod tests {
         Client::new(tx, topics)
     }
 
+    fn get_packet(packet: &Packet) -> BytesMut {
+        let mut bytes = BytesMut::new();
+        encode_mqtt(packet, &mut bytes, Default::default());
+        bytes
+    }
+
     #[tokio::test]
     async fn test_has_receiver() {
         let topics = Arc::new(Mutex::new(Topics::default()));
         let mut client = generate_client(topics.clone());
         let (listener, mut writer) = generate_tcp_stream_with_writer("1337".to_string()).await;
-        let mut connect = BytesMut::new();
-        encode_mqtt(
-            &Packet::Connect(ConnectPacket::default()),
-            &mut connect,
-            ProtocolVersion::V500,
-        );
+        let mut connect = get_packet(&Packet::Connect(ConnectPacket::default()));
         let (stream, addr) = listener.accept().await.unwrap();
         tokio::spawn(async move {
             client.handle_raw_tcp_stream(stream, addr).await.unwrap();
@@ -376,17 +393,62 @@ mod tests {
                 .unwrap()
                 .unwrap();
         assert!(matches!(response_packet, Packet::ConnectAck(_)));
-        let mut subscription_packet = BytesMut::new();
-        encode_mqtt(
-            &Packet::Subscribe(SubscribePacket::new(vec![SubscriptionTopic::new_concrete(
-                "test",
-            )])),
-            &mut subscription_packet,
-            Default::default(),
-        );
+        let mut subscription_packet = get_packet(&Packet::Subscribe(SubscribePacket::new(vec![
+            SubscriptionTopic::new_concrete("test"),
+        ])));
         writer.write_all(&subscription_packet).await.unwrap();
         writer.flush().await.unwrap();
         sleep(Duration::from_millis(100)).await;
         assert_eq!(1, topics.lock().unwrap().0.len());
+    }
+    #[tokio::test]
+    async fn test_handle_unsubscribe_packet() {
+        let topics = Arc::new(Mutex::new(Topics::default()));
+        let mut client = generate_client(topics.clone());
+        let (listener, mut writer) = generate_tcp_stream_with_writer("1338".to_string()).await;
+        let connect = get_packet(&Packet::Connect(ConnectPacket::default()));
+        let (stream, addr) = listener.accept().await.unwrap();
+        tokio::spawn(async move {
+            client.handle_raw_tcp_stream(stream, addr).await.unwrap();
+        });
+        writer.write_all(&connect).await.unwrap();
+        writer.flush().await.unwrap();
+        sleep(Duration::from_millis(20)).await;
+        let mut buf = [0; 1024];
+        writer.try_read(&mut buf).unwrap();
+        assert!(!buf.is_empty());
+        let response_packet =
+            decode_mqtt(&mut BytesMut::from(buf.as_slice()), ProtocolVersion::V500)
+                .unwrap()
+                .unwrap();
+        assert!(matches!(response_packet, Packet::ConnectAck(_)));
+        let mut subscription_packet = get_packet(&Packet::Subscribe(SubscribePacket::new(vec![
+            SubscriptionTopic::new_concrete("test"),
+        ])));
+        writer.write_all(&subscription_packet).await.unwrap();
+        writer.flush().await.unwrap();
+        sleep(Duration::from_millis(20)).await;
+        assert_eq!(1, topics.lock().unwrap().0.len());
+        let mut unsubscribe_packet =
+            get_packet(&Packet::Unsubscribe(UnsubscribePacket::new(vec![
+                TopicFilter::Concrete {
+                    filter: "test".to_string(),
+                    level_count: 1,
+                },
+            ])));
+        writer.write_all(&unsubscribe_packet).await.unwrap();
+        writer.flush().await.unwrap();
+        sleep(Duration::from_millis(100)).await;
+        assert!(matches!(
+            topics
+                .lock()
+                .unwrap()
+                .0
+                .get_mut("test")
+                .unwrap()
+                .sender
+                .send(Message::Unsubscribe("Hello".to_string())),
+            Err(tokio::sync::broadcast::error::SendError(_))
+        ));
     }
 }
