@@ -3,6 +3,7 @@ use crate::topics::{Message, Topics};
 use bytes::BytesMut;
 use std::fmt::Debug;
 use std::marker::Unpin;
+use std::str;
 
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
@@ -361,7 +362,9 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::Bytes;
     use mqtt_v5::types::SubscriptionTopic;
+    use std::str::FromStr;
     use std::time::Duration;
     use tokio::io::AsyncWriteExt;
     use tokio::net::TcpListener;
@@ -467,5 +470,67 @@ mod tests {
                 .send(Message::Unsubscribe("Hello".to_string())),
             Err(tokio::sync::broadcast::error::SendError(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn test_handle_publish_packet() {
+        let topics = Arc::new(Mutex::new(Topics::default()));
+        let mut client = generate_client(topics.clone());
+        let (listener, mut writer) = generate_tcp_stream_with_writer("1338".to_string()).await;
+        let connect = get_packet(&Packet::Connect(ConnectPacket::default()));
+        let (stream, addr) = listener.accept().await.unwrap();
+        tokio::spawn(async move {
+            client.handle_raw_tcp_stream(stream, addr).await.unwrap();
+        });
+        writer.write_all(&connect).await.unwrap();
+        writer.flush().await.unwrap();
+        sleep(Duration::from_millis(20)).await;
+        let mut buf = [0; 1024];
+        writer.try_read(&mut buf).unwrap();
+        assert!(!buf.is_empty());
+        let response_packet =
+            decode_mqtt(&mut BytesMut::from(buf.as_slice()), ProtocolVersion::V500)
+                .unwrap()
+                .unwrap();
+        assert!(matches!(response_packet, Packet::ConnectAck(_)));
+        // TODO: new methode for publish packet in lib-fork
+        let publish_packet = get_packet(&Packet::Publish(PublishPacket {
+            is_duplicate: false,
+            qos: QoS::AtMostOnce,
+            retain: false,
+            topic: TopicFilter::Concrete {
+                filter: "test".to_string(),
+                level_count: 1,
+            },
+            packet_id: None,
+            payload_format_indicator: None,
+            message_expiry_interval: None,
+            topic_alias: None,
+            response_topic: None,
+            correlation_data: None,
+            user_properties: vec![],
+            subscription_identifiers: vec![],
+            content_type: None,
+            payload: Bytes::from("test".to_string()),
+        }));
+        writer.write_all(&publish_packet).await.unwrap();
+        writer.flush().await.unwrap();
+        sleep(Duration::from_millis(100)).await;
+        // Receiver should not be empty
+        assert!(!client.receivers.is_empty());
+        // Receiver should have one message
+        assert_eq!(1, client.receivers.get("test").unwrap().len());
+        // Receiver should have the message "test"
+        let msg = client
+            .receivers
+            .get_mut("test")
+            .unwrap()
+            .recv()
+            .await
+            .unwrap();
+        match msg {
+            Message::Publish(msg) => assert_eq!("test", str::from_utf8(&msg.payload).unwrap()),
+            _ => panic!("Wrong message type"),
+        }
     }
 }
