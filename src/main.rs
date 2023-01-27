@@ -43,15 +43,19 @@ async fn main() -> Result {
     let topics = Arc::new(Mutex::new(Topics::default()));
     let listener = TcpListener::bind(TCP_LISTENER_ADDR).await?;
 
+    println!("Serving at {:?}", listener.local_addr());
+
     //TLS
-    let certs = load_certs(Path::new("certs/cert.pem"))?;
-    let mut keys = load_keys(Path::new("certs/key.pem"))?;
+    let certs = load_certs(Path::new("certs/broker/broker.crt"))?;
+    let mut keys = load_keys(Path::new("certs/broker/broker.key"))?;
 
     let config = rustls::ServerConfig::builder()
         .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(certs, keys.remove(0))
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+
+    println!("TLS config: {:?}", config);
 
     let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
 

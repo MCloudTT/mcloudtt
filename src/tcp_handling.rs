@@ -87,6 +87,7 @@ impl Client {
                                 return Err(MCloudError::UnexpectedClientDisconnected("CLIENT".to_string()));
                             },
                         Ok(_) => {
+                                info!("RECEIVERS: {:?}", self.receivers);
                                 match self.handle_packet(&mut stream, &mut buf).await {
                                     Ok(_) => { },
                                     Err(_) => {
@@ -142,14 +143,20 @@ impl Client {
             peer, packet.payload, packet.topic
         );
 
+        let mut reason_code = mqtt_v5::types::PublishAckReason::UnspecifiedError;
+
+        match self.topics.lock().unwrap().publish(packet.clone()) {
+            Ok(_) => {
+                reason_code = mqtt_v5::types::PublishAckReason::Success;
+                info!("Send message to topic")
+            }
+            Err(ref e) => info!("Could not send message to topic because of `{0}`", e),
+        };
+
         if packet.qos != QoS::AtMostOnce {
-            match self.topics.lock().unwrap().publish(packet.clone()) {
-                Ok(_) => info!("Send message to topic"),
-                Err(ref e) => info!("Could not send message to topic because of `{0}`", e),
-            };
             let puback = Packet::PublishAck(PublishAckPacket {
                 packet_id: packet.packet_id.unwrap(),
-                reason_code: mqtt_v5::types::PublishAckReason::Success,
+                reason_code: reason_code,
                 reason_string: None,
                 user_properties: vec![],
             });
@@ -242,7 +249,7 @@ impl Client {
         packet: &mut [u8; 265],
     ) -> Result {
         //TODO: remove peer address
-        let peer: SocketAddr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080).into();
+        let peer: SocketAddr = SocketAddrV4::new(Ipv4Addr::new(1, 3, 3, 7), 1337).into();
         let packet = decode_mqtt(
             &mut BytesMut::from(packet.as_slice()),
             ProtocolVersion::V500,
