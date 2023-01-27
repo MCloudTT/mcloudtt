@@ -84,11 +84,11 @@ impl Client {
                     match packet {
                         Ok(0) => {
                                 info!("disconnected unexpectedly");
-                                return Err(MCloudError::UnexpectedClientDisconnected("CLIENT".to_string()));
+                                return Err(MCloudError::UnexpectedClientDisconnected(addr.to_string()));
                             },
                         Ok(_) => {
                                 info!("RECEIVERS: {:?}", self.receivers);
-                                match self.handle_packet(&mut stream, &mut buf).await {
+                                match self.handle_packet(&mut stream, &mut buf, &addr).await {
                                     Ok(_) => { },
                                     Err(_) => {
                                         info!("Closing client {0}", &addr);
@@ -247,9 +247,8 @@ impl Client {
         &mut self,
         stream: &mut impl MCStream,
         packet: &mut [u8; 265],
+        peer: &SocketAddr,
     ) -> Result {
-        //TODO: remove peer address
-        let peer: SocketAddr = SocketAddrV4::new(Ipv4Addr::new(1, 3, 3, 7), 1337).into();
         let packet = decode_mqtt(
             &mut BytesMut::from(packet.as_slice()),
             ProtocolVersion::V500,
