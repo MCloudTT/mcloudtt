@@ -2,3 +2,6 @@
 .code/
 .idea/
 *.lock
+*.pem
+*.key
+/certs
