@@ -73,7 +73,7 @@ impl Client {
     #[async_backtrace::framed]
     pub async fn handle_raw_tcp_stream(
         &mut self,
-        mut stream: TlsStream<TcpStream>,
+        mut stream: impl MCStream,
         addr: SocketAddr,
     ) -> Result {
         loop {
