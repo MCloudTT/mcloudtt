@@ -62,11 +62,14 @@ async fn main() -> Result {
     // TODO: Handle fallback to non-tls?
     while let Ok((stream, addr)) = listener.accept().await {
         let tls_acceptor = tls_acceptor.clone();
-        let mut stream = tls_acceptor.accept(stream).await?;
-        info!("Peer connected: {:?}", addr);
-        let (sender, _receiver) = tokio::sync::mpsc::channel::<Message>(200);
-        let mut client = Client::new(sender, topics.clone());
-        tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
+        if let Ok(mut stream) = tls_acceptor.accept(stream).await {
+            info!("Peer connected: {:?}", addr);
+            let (sender, _receiver) = tokio::sync::mpsc::channel::<Message>(200);
+            let mut client = Client::new(sender, topics.clone());
+            tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
+        } else {
+            info!("Peer failed to connect: {:?}", addr);
+        }
     }
     Ok(())
 }
