@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#[cfg(feature = "bq_logging")]
 mod bigquery;
 pub(crate) mod error;
 mod tcp_handling;

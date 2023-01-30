@@ -1,3 +1,4 @@
+#[cfg(feature = "bq_logging")]
 use crate::bigquery::log_in_bq;
 use crate::error::{MCloudError, Result};
 use crate::topics::{Message, Topics};
@@ -164,6 +165,7 @@ impl Client {
             });
             return Self::write_to_stream(stream, &puback).await;
         }
+        #[cfg(feature = "bq_logging")]
         log_in_bq(
             packet.topic.topic_name().to_string(),
             str::from_utf8(&packet.payload).unwrap().to_string(),
