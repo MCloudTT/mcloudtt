@@ -7,7 +7,7 @@ use crate::topics::{Message, Topics};
 
 use std::{
     fs::File,
-    io::{self, BufRead, BufReader},
+    io::{self, BufReader},
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -62,7 +62,7 @@ async fn main() -> Result {
     // TODO: Handle fallback to non-tls?
     while let Ok((stream, addr)) = listener.accept().await {
         let tls_acceptor = tls_acceptor.clone();
-        if let Ok(mut stream) = tls_acceptor.accept(stream).await {
+        if let Ok(stream) = tls_acceptor.accept(stream).await {
             info!("Peer connected: {:?}", addr);
             let (sender, _receiver) = tokio::sync::mpsc::channel::<Message>(200);
             let mut client = Client::new(sender, topics.clone());
