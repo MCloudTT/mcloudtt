@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+mod bigquery;
 pub(crate) mod error;
 mod tcp_handling;
 mod topics;
