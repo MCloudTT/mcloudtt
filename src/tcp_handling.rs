@@ -145,8 +145,6 @@ impl Client {
             peer, packet.payload, packet.topic
         );
 
-        log_in_bq(packet.topic.topic_name().to_string(), str::from_utf8(&packet.payload).unwrap().to_string());
-
         let mut reason_code = mqtt_v5::types::PublishAckReason::UnspecifiedError;
 
         match self.topics.lock().unwrap().publish(packet.clone()) {
@@ -166,6 +164,11 @@ impl Client {
             });
             return Self::write_to_stream(stream, &puback).await;
         }
+        log_in_bq(
+            packet.topic.topic_name().to_string(),
+            str::from_utf8(&packet.payload).unwrap().to_string(),
+        )
+        .await;
         Ok(())
     }
 
