@@ -18,11 +18,11 @@ async-backtrace = "0.2"
 tracing-tree = "0.2.2"
 tokio-rustls = "0.23.4"
 rustls-pemfile = "1.0.2"
-gcp-bigquery-client = "0.16.4"
+gcp-bigquery-client = { version = "0.16.4", optional = true }
 chrono = { version = "0.4.23", optional = true }
 serde = { version = "1.0.152", optional = true }
 
 [features]
 default = []
 docker = []
-bq_logging = ["dep:chrono", "dep:serde"]
+bq_logging = ["dep:chrono", "dep:serde", "dep:gcp-bigquery-client"]
