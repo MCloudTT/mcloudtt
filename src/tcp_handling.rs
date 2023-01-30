@@ -19,9 +19,7 @@ use mqtt_v5::types::{
 };
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::fmt::Debug;
 use std::future::Future;
-use std::marker::Unpin;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
