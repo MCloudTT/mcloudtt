@@ -17,6 +17,7 @@ openssl req -passin pass:${CA_PASSWD} -new -x509 -days 1826 -key ${CA_PATH}/ca.k
 echo "CA key and certificate generated"
 
 # Generate broker key and certificate signing request
+echo "A common name must be supplied for the broker certificate"
 openssl genrsa -out ${BROKER_PATH}/broker.key 4096
 openssl req -new -out ${BROKER_PATH}/broker.csr -key ${BROKER_PATH}/broker.key
 openssl x509 -req -passin pass:${CA_PASSWD} -in ${BROKER_PATH}/broker.csr -CA ${CA_PATH}/ca.crt -CAkey ${CA_PATH}/ca.key -CAcreateserial -out ${BROKER_PATH}/broker.crt -days 360
