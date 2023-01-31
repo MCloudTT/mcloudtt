@@ -18,7 +18,7 @@ use rustls_pemfile::{certs, rsa_private_keys};
 use tokio::net::TcpListener;
 
 use tokio_rustls::rustls::{self, Certificate, PrivateKey};
-use tracing::info;
+use tracing::{info, instrument::WithSubscriber};
 use tracing_subscriber::EnvFilter;
 
 use crate::tcp_handling::Client;
@@ -33,14 +33,21 @@ const TCP_LISTENER_ADDR: &str = "127.0.0.1:1883";
 #[tokio::main]
 async fn main() -> Result {
     // Set up tracing_tree
-    Registry::default()
-        .with(EnvFilter::from_default_env())
-        .with(
-            HierarchicalLayer::new(2)
-                .with_targets(true)
-                .with_bracketed_fields(true),
-        )
+    // write a tracing subscriber for the whole project which outputs to stdout
+
+    let subscriber = tracing_subscriber::fmt::Subscriber::builder()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_writer(std::io::stdout)
         .init();
+
+    // Registry::default()
+    //     .with(EnvFilter::from_default_env())
+    //     .with(
+    //         HierarchicalLayer::new(2)
+    //             .with_targets(true)
+    //             .with_bracketed_fields(true),
+    //     )
+    //     .init();
     info!("Starting MCloudTT!");
     let topics = Arc::new(Mutex::new(Topics::default()));
     let listener = TcpListener::bind(TCP_LISTENER_ADDR).await?;
