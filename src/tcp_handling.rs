@@ -124,10 +124,7 @@ impl Client {
                 }
                 _ = tokio:: time:: sleep(Duration::from_secs(10)) => {
                     info!("Will delay interval has passed");
-                    if let Some(will) = self.will.clone() {
-                        let send_packet = PublishPacket::from(will);
-                        self.handle_publish_packet(&mut stream, &addr, &send_packet).await?;
-                    }
+                    self.publish_will(&mut stream, &addr).await?;
                 }
             }
         }
@@ -333,14 +330,24 @@ impl Client {
         info!("{:?} disconnect with reason-code: {:?}", peer, reason);
 
         if reason == DisconnectReason::DisconnectWithWillMessage {
-            // TODO: Make a publish_will function
-            let will_packet = PublishPacket::from(self.will.clone().unwrap());
-            self.handle_publish_packet(stream, peer, &will_packet)
-                .await?;
-            debug!("Will message {:?} sent", will_packet);
+            self.publish_will(stream, peer).await?;
         }
 
         Err(MCloudError::ClientDisconnected((&peer).to_string()))
+    }
+
+    /// Publish the stored will message
+    #[tracing::instrument]
+    #[async_backtrace::framed]
+    async fn publish_will(&mut self, stream: &mut impl MCStream, peer: &SocketAddr) -> Result {
+        if self.will.is_none() {
+            return Ok(());
+        }
+        let will_packet = PublishPacket::from(self.will.clone().unwrap());
+        self.handle_publish_packet(stream, peer, &will_packet)
+            .await?;
+        debug!("Will message {:?} sent", will_packet);
+        Ok(())
     }
 
     #[tracing::instrument]
