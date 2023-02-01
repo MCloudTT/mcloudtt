@@ -88,7 +88,7 @@ impl Client {
     ) -> Result {
         loop {
             // TODO: bigger buffer?
-            let mut buf = [0; 265];
+            let mut buf = [0; 1024];
 
             tokio::select! {
                 packet = stream.read(&mut buf) => {
@@ -128,10 +128,7 @@ impl Client {
                 }
                 _ = tokio:: time:: sleep(Duration::from_secs(10)) => {
                     info!("Will delay interval has passed");
-                    if let Some(will) = self.will.clone() {
-                        let send_packet = PublishPacket::from(will);
-                        self.handle_publish_packet(&mut stream, &addr, &send_packet).await?;
-                    }
+                    self.publish_will(&mut stream, &addr).await?;
                 }
             }
         }
@@ -154,7 +151,7 @@ impl Client {
         peer: &SocketAddr,
         packet: &PublishPacket,
     ) -> Result {
-        // TODO: process payload
+        // TODO: process payload?
         info!(
             "{:?} published {:?} to {:?}",
             peer, packet.payload, packet.topic
@@ -195,7 +192,6 @@ impl Client {
     ) -> Result {
         info!("{:?} subscribed to {:?}", peer, packet.subscription_topics);
 
-        // TODO: tell client following features are not supported: SharedSubscriptions,
         // WildcardSubscriptions
         let mut sub_ack_packet = SubscribeAckPacket {
             packet_id: packet.packet_id,
@@ -265,7 +261,7 @@ impl Client {
     async fn handle_packet(
         &mut self,
         stream: &mut impl MCStream,
-        packet: &mut [u8; 265],
+        packet: &mut [u8; 1024],
         peer: &SocketAddr,
     ) -> Result {
         let packet = decode_mqtt(
@@ -313,8 +309,7 @@ impl Client {
             // temp qos on 1
             maximum_qos: Some(MaximumQos(QoS::AtMostOnce)),
             retain_available: None,
-            // TODO: increase buffer size
-            maximum_packet_size: Some(MaximumPacketSize(256)),
+            maximum_packet_size: Some(MaximumPacketSize(1024)),
             // TODO: assign unique client_identifier
             assigned_client_identifier: None,
             topic_alias_maximum: None,
@@ -345,14 +340,24 @@ impl Client {
         info!("{:?} disconnect with reason-code: {:?}", peer, reason);
 
         if reason == DisconnectReason::DisconnectWithWillMessage {
-            // TODO: Make a publish_will function
-            let will_packet = PublishPacket::from(self.will.clone().unwrap());
-            self.handle_publish_packet(stream, peer, &will_packet)
-                .await?;
-            debug!("Will message {:?} sent", will_packet);
+            self.publish_will(stream, peer).await?;
         }
 
         Err(MCloudError::ClientDisconnected((&peer).to_string()))
+    }
+
+    /// Publish the stored will message
+    #[tracing::instrument]
+    #[async_backtrace::framed]
+    async fn publish_will(&mut self, stream: &mut impl MCStream, peer: &SocketAddr) -> Result {
+        if self.will.is_none() {
+            return Ok(());
+        }
+        let will_packet = PublishPacket::from(self.will.clone().unwrap());
+        self.handle_publish_packet(stream, peer, &will_packet)
+            .await?;
+        debug!("Will message {:?} sent", will_packet);
+        Ok(())
     }
 
     #[tracing::instrument]
