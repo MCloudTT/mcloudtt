@@ -84,7 +84,7 @@ impl Client {
     ) -> Result {
         loop {
             // TODO: bigger buffer?
-            let mut buf = [0; 265];
+            let mut buf = [0; 1024];
 
             tokio::select! {
                 packet = stream.read(&mut buf) => {
@@ -150,7 +150,7 @@ impl Client {
         peer: &SocketAddr,
         packet: &PublishPacket,
     ) -> Result {
-        // TODO: process payload
+        // TODO: process payload?
         info!(
             "{:?} published {:?} to {:?}",
             peer, packet.payload, packet.topic
@@ -185,7 +185,6 @@ impl Client {
     ) -> Result {
         info!("{:?} subscribed to {:?}", peer, packet.subscription_topics);
 
-        // TODO: tell client following features are not supported: SharedSubscriptions,
         // WildcardSubscriptions
         let mut sub_ack_packet = SubscribeAckPacket {
             packet_id: packet.packet_id,
@@ -255,7 +254,7 @@ impl Client {
     async fn handle_packet(
         &mut self,
         stream: &mut impl MCStream,
-        packet: &mut [u8; 265],
+        packet: &mut [u8; 1024],
         peer: &SocketAddr,
     ) -> Result {
         let packet = decode_mqtt(
@@ -303,8 +302,7 @@ impl Client {
             // temp qos on 1
             maximum_qos: Some(MaximumQos(QoS::AtMostOnce)),
             retain_available: None,
-            // TODO: increase buffer size
-            maximum_packet_size: Some(MaximumPacketSize(256)),
+            maximum_packet_size: Some(MaximumPacketSize(1024)),
             // TODO: assign unique client_identifier
             assigned_client_identifier: None,
             topic_alias_maximum: None,
