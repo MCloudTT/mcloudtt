@@ -1,5 +1,7 @@
 # MCloudTT
 
+# WARNNG: This branch uses a workaround which disables the SNI extension in the TLS handshake.
+
 A cloud-native aynchronous MQTT Broker written in Rust.
 
 ## Getting started

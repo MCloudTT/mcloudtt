@@ -16,7 +16,7 @@ mqtt-v5 = { git="https://github.com/Nereuxofficial/mqtt-broker", package="mqtt-v
 bytes = "1"
 async-backtrace = "0.2"
 tracing-tree = "0.2.2"
-tokio-rustls = { git="https://github.com/Nereuxofficial/tls", branch="rustls-alpha" }
+tokio-rustls = { path = "workaround/tls/tokio-rustls"}
 rustls-pemfile = "1.0.2"
 gcp-bigquery-client = { version = "0.16.4", optional = true }
 chrono = { version = "0.4.23", optional = true }
