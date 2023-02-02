@@ -1,12 +1,12 @@
 use clap::Parser;
 use paho_mqtt as mqtt;
+use rand::{thread_rng, Rng};
 use std::env;
 
 #[derive(Parser)]
 struct Args {
     host: String,
     topic: String,
-    payload: String,
 }
 
 #[tokio::main]
@@ -45,12 +45,19 @@ async fn main() {
 
     cli.connect(conn_opts).await.unwrap();
 
-    let msg = mqtt::MessageBuilder::new()
-        .topic(args.topic)
-        .payload(args.payload)
-        .qos(0)
-        .finalize();
+    let mut rng = rand::thread_rng();
 
-    cli.publish(msg).await.unwrap();
+    loop {
+        let msg = mqtt::MessageBuilder::new()
+            .topic(&args.topic)
+            .payload(format!("{:.2}", &rng.gen_range(20.0..25.0)))
+            .qos(0)
+            .finalize();
+
+        cli.publish(msg).await.unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    }
+
     cli.disconnect(None).await.unwrap();
 }
