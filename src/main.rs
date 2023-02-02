@@ -10,12 +10,13 @@ use crate::topics::{Message, Topics};
 use std::{
     fs::File,
     io::{self, BufReader},
+    net::SocketAddr,
     path::Path,
     sync::{Arc, Mutex},
 };
 
 use rustls_pemfile::{certs, rsa_private_keys};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 
 use tokio_rustls::rustls::{self, Certificate, PrivateKey};
 use tracing::info;
@@ -27,9 +28,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Registry
 use tracing_tree::HierarchicalLayer;
 
 #[cfg(feature = "docker")]
-const TCP_LISTENER_ADDR: &str = "0.0.0.0:1883";
+const LISTENER_ADDR: &str = "0.0.0.0";
 #[cfg(not(feature = "docker"))]
-const TCP_LISTENER_ADDR: &str = "127.0.0.1:1883";
+const LISTENER_ADDR: &str = "127.0.0.1";
+
 #[tokio::main]
 async fn main() -> Result {
     // Set up tracing_tree
@@ -43,7 +45,11 @@ async fn main() -> Result {
         .init();
     info!("Starting MCloudTT!");
     let topics = Arc::new(Mutex::new(Topics::default()));
-    let listener = TcpListener::bind(TCP_LISTENER_ADDR).await?;
+
+    // MQTT over TCP
+    let listener = TcpListener::bind(LISTENER_ADDR.to_owned() + ":1883").await?;
+    // MQTT over WebSockets
+    let ws_listener = TcpListener::bind(LISTENER_ADDR.to_owned() + ":8080").await?;
 
     println!("Serving at {:?}", listener.local_addr());
 
@@ -61,19 +67,46 @@ async fn main() -> Result {
 
     let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
 
-    // TODO: Handle fallback to non-tls?
-    while let Ok((stream, addr)) = listener.accept().await {
-        let tls_acceptor = tls_acceptor.clone();
-        if let Ok(stream) = tls_acceptor.accept(stream).await {
-            info!("Peer connected: {:?}", addr);
-            let (sender, _receiver) = tokio::sync::mpsc::channel::<Message>(200);
-            let mut client = Client::new(sender, topics.clone());
-            tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
-        } else {
-            info!("Peer failed to connect: {:?}", addr);
+    loop {
+        tokio::select! {
+            raw_tcp_stream = listener.accept() => {
+                match raw_tcp_stream {
+                    Ok((stream, addr)) => {
+                        handle_new_connection(stream, addr, tls_acceptor.clone(), topics.clone()).await;
+                    }
+                    Err(e) => {
+                        info!("Error accepting TCP connection: {:?}", e);
+                    }
+                }
+            }
+            raw_ws_stream = ws_listener.accept() => {
+                match raw_ws_stream {
+                    Ok((stream, addr)) => {
+                        handle_new_connection(stream, addr, tls_acceptor.clone(), topics.clone()).await;
+                    }
+                    Err(e) => {
+                        info!("Error accepting WS connection: {:?}", e);
+                    }
+                }
+            }
         }
     }
-    Ok(())
+}
+
+async fn handle_new_connection(
+    stream: TcpStream,
+    addr: SocketAddr,
+    tls_acceptor: tokio_rustls::TlsAcceptor,
+    topics: Arc<Mutex<Topics>>,
+) {
+    info!("Peer connected: {:?}", &addr);
+    if let Ok(stream) = tls_acceptor.accept(stream).await {
+        let (sender, _receiver) = tokio::sync::mpsc::channel::<Message>(200);
+        let mut client = Client::new(sender, topics);
+        tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
+    } else {
+        info!("Peer failed to connect: {:?}", addr);
+    }
 }
 
 fn load_certs(path: &Path) -> io::Result<Vec<Certificate>> {
