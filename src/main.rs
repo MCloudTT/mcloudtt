@@ -10,12 +10,13 @@ use crate::topics::{Message, Topics};
 use std::{
     fs::File,
     io::{self, BufReader},
+    net::SocketAddr,
     path::Path,
     sync::{Arc, Mutex},
 };
 
 use rustls_pemfile::{certs, rsa_private_keys};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 
 use tokio_rustls::rustls::{self, Certificate, PrivateKey};
 use tracing::info;
@@ -75,15 +76,7 @@ async fn main() -> Result {
             raw_tcp_stream = listener.accept() => {
                 match raw_tcp_stream {
                     Ok((stream, addr)) => {
-                        let tls_acceptor = tls_acceptor.clone();
-                        if let Ok(stream) = tls_acceptor.accept(stream).await {
-                            info!("Peer connected: {:?}", addr);
-                            let (sender, _receiver) = tokio::sync::mpsc::channel::<Message>(200);
-                            let mut client = Client::new(sender, topics.clone());
-                            tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
-                        } else {
-                            info!("Peer failed to connect: {:?}", addr);
-                        }
+                        handle_new_connection(stream, addr, tls_acceptor.clone(), topics.clone()).await;
                     }
                     Err(e) => {
                         info!("Error accepting TCP connection: {:?}", e);
@@ -93,15 +86,7 @@ async fn main() -> Result {
             raw_ws_stream = ws_listener.accept() => {
                 match raw_ws_stream {
                     Ok((stream, addr)) => {
-                        info!("Peer connected: {:?}", addr);
-                        let tls_acceptor = tls_acceptor.clone();
-                        if let Ok(stream) = tls_acceptor.accept(stream).await {
-                            let (sender, _receiver) = tokio::sync::mpsc::channel::<Message>(200);
-                            let mut client = Client::new(sender, topics.clone());
-                            tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
-                        } else {
-                            info!("Peer failed to connect: {:?}", addr);
-                        }
+                        handle_new_connection(stream, addr, tls_acceptor.clone(), topics.clone()).await;
                     }
                     Err(e) => {
                         info!("Error accepting WS connection: {:?}", e);
@@ -109,6 +94,22 @@ async fn main() -> Result {
                 }
             }
         }
+    }
+}
+
+async fn handle_new_connection(
+    stream: TcpStream,
+    addr: SocketAddr,
+    tls_acceptor: tokio_rustls::TlsAcceptor,
+    topics: Arc<Mutex<Topics>>,
+) {
+    info!("Peer connected: {:?}", &addr);
+    if let Ok(stream) = tls_acceptor.accept(stream).await {
+        let (sender, _receiver) = tokio::sync::mpsc::channel::<Message>(200);
+        let mut client = Client::new(sender, topics);
+        tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
+    } else {
+        info!("Peer failed to connect: {:?}", addr);
     }
 }
 
