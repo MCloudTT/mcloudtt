@@ -28,13 +28,9 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Registry
 use tracing_tree::HierarchicalLayer;
 
 #[cfg(feature = "docker")]
-const TCP_LISTENER_ADDR: &str = "0.0.0.0:1883";
-#[cfg(feature = "docker")]
-const WS_LISTENER_ADDR: &str = "0.0.0.0:8080";
+const LISTENER_ADDR: &str = "0.0.0.0";
 #[cfg(not(feature = "docker"))]
-const TCP_LISTENER_ADDR: &str = "127.0.0.1:1883";
-#[cfg(not(feature = "docker"))]
-const WS_LISTENER_ADDR: &str = "127.0.0.1:8080";
+const LISTENER_ADDR: &str = "127.0.0.1";
 
 #[tokio::main]
 async fn main() -> Result {
@@ -51,9 +47,9 @@ async fn main() -> Result {
     let topics = Arc::new(Mutex::new(Topics::default()));
 
     // MQTT over TCP
-    let listener = TcpListener::bind(TCP_LISTENER_ADDR).await?;
+    let listener = TcpListener::bind(LISTENER_ADDR.to_owned() + ":1883").await?;
     // MQTT over WebSockets
-    let ws_listener = TcpListener::bind(WS_LISTENER_ADDR).await?;
+    let ws_listener = TcpListener::bind(LISTENER_ADDR.to_owned() + ":8080").await?;
 
     println!("Serving at {:?}", listener.local_addr());
 
