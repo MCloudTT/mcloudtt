@@ -32,6 +32,7 @@ const TCP_LISTENER_ADDR: &str = "0.0.0.0:1883";
 const WS_LISTENER_ADDR: &str = "0.0.0.0:8080";
 #[cfg(not(feature = "docker"))]
 const TCP_LISTENER_ADDR: &str = "127.0.0.1:1883";
+#[cfg(not(feature = "docker"))]
 const WS_LISTENER_ADDR: &str = "127.0.0.1:8080";
 
 #[tokio::main]
