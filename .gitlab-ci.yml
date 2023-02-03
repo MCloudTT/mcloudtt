@@ -17,7 +17,7 @@ cargo-build:
   image: rustdocker/rust:stable
   stage: test
   script:
-    - cargo build --all-features
+    - cargo build
     - cargo test --verbose --jobs 1
     - cargo doc
 
@@ -26,12 +26,6 @@ cargo-build-release:
   stage: test
   script:
     - cargo build --all-features --release
-
-cargo-build-all-feature:
-  image: rustdocker/rust:stable
-  stage: test
-  script:
-    - cargo build --all-features
 
 terraform:
   image: registry.gitlab.com/gitlab-org/terraform-images/stable:latest
