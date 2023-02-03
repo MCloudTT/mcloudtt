@@ -8,6 +8,7 @@ struct Args {
     topic: String,
     file: String,
     column: usize,
+    interval: u64,
 }
 
 #[tokio::main]
@@ -61,7 +62,7 @@ async fn main() {
 
         cli.publish(msg).await.unwrap();
 
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(args.interval)).await;
     }
 
     cli.disconnect(None).await.unwrap();
