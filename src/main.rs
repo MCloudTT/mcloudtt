@@ -36,6 +36,7 @@ const LISTENER_ADDR: &str = "0.0.0.0";
 #[cfg(not(feature = "docker"))]
 const LISTENER_ADDR: &str = "127.0.0.1";
 
+// Load config
 lazy_static! {
     static ref SETTINGS: Configuration = Configuration::load().unwrap();
 }
@@ -51,13 +52,13 @@ async fn main() -> Result {
                 .with_bracketed_fields(true),
         )
         .init();
-    // Load our config
-    let settings = Configuration::load()?;
-    println!("{:?}", settings);
     info!("Starting MCloudTT!");
-    main_loop(settings).await
+    main_loop().await
 }
-async fn main_loop(settings: Configuration) -> Result {
+async fn main_loop() -> Result {
+
+    let settings = &SETTINGS;
+
     let topics = Arc::new(Mutex::new(Topics::default()));
 
     // MQTT over TCP
