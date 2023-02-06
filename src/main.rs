@@ -46,23 +46,24 @@ async fn main() -> Result {
         )
         .init();
     // Load our config
-    let config = Configuration::load()?;
+    let settings = Configuration::load()?;
+    println!("{:?}", settings);
     info!("Starting MCloudTT!");
-    main_loop(config).await
+    main_loop(settings).await
 }
-async fn main_loop(config: Configuration) -> Result {
+async fn main_loop(settings: Configuration) -> Result {
     let topics = Arc::new(Mutex::new(Topics::default()));
 
     // MQTT over TCP
     let listener =
-        TcpListener::bind(LISTENER_ADDR.to_owned() + ":" + &config.ports.tcp.to_string()).await?;
+        TcpListener::bind(LISTENER_ADDR.to_owned() + ":" + &settings.ports.tcp.to_string()).await?;
     // MQTT over WebSockets
     let ws_listener =
-        TcpListener::bind(LISTENER_ADDR.to_owned() + ":" + &config.ports.ws.to_string()).await?;
+        TcpListener::bind(LISTENER_ADDR.to_owned() + ":" + &settings.ports.ws.to_string()).await?;
 
     //TLS
-    let certs = load_certs(Path::new(&config.tls.certfile))?;
-    let mut keys = load_keys(Path::new(&config.tls.keyfile))?;
+    let certs = load_certs(Path::new(&settings.tls.certfile))?;
+    let mut keys = load_keys(Path::new(&settings.tls.keyfile))?;
 
     let config = rustls::ServerConfig::builder()
         .with_safe_defaults()
@@ -72,25 +73,43 @@ async fn main_loop(config: Configuration) -> Result {
 
     let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
 
-    loop {
-        tokio::select! {
-            raw_tcp_stream = listener.accept() => {
-                match raw_tcp_stream {
-                    Ok((stream, addr)) => {
-                        handle_new_connection(stream, addr, tls_acceptor.clone(), topics.clone()).await;
+    // Start loop based on settings for websocket
+    if settings.general.websocket {
+        loop {
+            tokio::select! {
+                raw_tcp_stream = listener.accept() => {
+                    match raw_tcp_stream {
+                        Ok((stream, addr)) => {
+                            handle_new_connection(stream, addr, tls_acceptor.clone(), topics.clone()).await;
+                        }
+                        Err(e) => {
+                            info!("Error accepting TCP connection: {:?}", e);
+                        }
                     }
-                    Err(e) => {
-                        info!("Error accepting TCP connection: {:?}", e);
+                }
+                raw_ws_stream = ws_listener.accept() => {
+                    match raw_ws_stream {
+                        Ok((stream, addr)) => {
+                            handle_new_connection(stream, addr, tls_acceptor.clone(), topics.clone()).await;
+                        }
+                        Err(e) => {
+                            info!("Error accepting WS connection: {:?}", e);
+                        }
                     }
                 }
             }
-            raw_ws_stream = ws_listener.accept() => {
-                match raw_ws_stream {
-                    Ok((stream, addr)) => {
-                        handle_new_connection(stream, addr, tls_acceptor.clone(), topics.clone()).await;
-                    }
-                    Err(e) => {
-                        info!("Error accepting WS connection: {:?}", e);
+        }
+    } else {
+        loop {
+            tokio::select! {
+                raw_tcp_stream = listener.accept() => {
+                    match raw_tcp_stream {
+                        Ok((stream, addr)) => {
+                            handle_new_connection(stream, addr, tls_acceptor.clone(), topics.clone()).await;
+                        }
+                        Err(e) => {
+                            info!("Error accepting TCP connection: {:?}", e);
+                        }
                     }
                 }
             }
