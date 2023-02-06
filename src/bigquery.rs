@@ -1,10 +1,10 @@
+use crate::config::BigQuery;
+use crate::SETTINGS;
 use gcp_bigquery_client::{
     model::table_data_insert_all_request::TableDataInsertAllRequest, Client,
 };
 use serde::Serialize;
 use tracing::{error, info};
-use crate::config::BigQuery;
-use crate::SETTINGS;
 
 #[derive(Debug, Serialize)]
 struct LogEntry {
@@ -32,7 +32,12 @@ pub async fn log_in_bq(topic: String, message: String) {
 
     match client
         .tabledata()
-        .insert_all(&config.project_id, &config.dataset_id, &config.table_id, request)
+        .insert_all(
+            &config.project_id,
+            &config.dataset_id,
+            &config.table_id,
+            request,
+        )
         .await
     {
         Ok(_) => {}

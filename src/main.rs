@@ -56,7 +56,6 @@ async fn main() -> Result {
     main_loop().await
 }
 async fn main_loop() -> Result {
-
     let settings = &SETTINGS;
 
     let topics = Arc::new(Mutex::new(Topics::default()));
