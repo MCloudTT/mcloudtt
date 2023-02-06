@@ -18,10 +18,22 @@ pub enum MCloudError {
     NoReceiversFound,
     #[error("IO error: `{0}`")]
     IOError(std::io::Error),
+    #[error("Configuration Error: `{0}`")]
+    ConfigurationError(config::ConfigError),
 }
 
-impl From<std::io::Error> for MCloudError {
-    fn from(value: std::io::Error) -> Self {
-        MCloudError::IOError(value)
+macro_rules! impl_from {
+    ($(($source: ty, $target: expr)),*) => {
+        $(
+        impl From<$source> for MCloudError{
+            fn from(value: $source) -> Self{
+                $target(value)
+            }
+        })*
     }
 }
+
+impl_from!(
+    (std::io::Error, MCloudError::IOError),
+    (config::ConfigError, MCloudError::ConfigurationError)
+);
