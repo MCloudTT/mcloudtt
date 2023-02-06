@@ -29,10 +29,16 @@ use error::Result;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Registry};
 use tracing_tree::HierarchicalLayer;
 
+use lazy_static::lazy_static;
+
 #[cfg(feature = "docker")]
 const LISTENER_ADDR: &str = "0.0.0.0";
 #[cfg(not(feature = "docker"))]
 const LISTENER_ADDR: &str = "127.0.0.1";
+
+lazy_static! {
+    static ref SETTINGS: Configuration = Configuration::load().unwrap();
+}
 
 #[tokio::main]
 async fn main() -> Result {
