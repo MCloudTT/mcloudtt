@@ -1,0 +1,10 @@
+[general]
+websocket = true
+
+[tls]
+certfile = "certs/broker/broker.crt"
+keyfile = "certs/broker/broker.key"
+
+[ports]
+tcp = 1883
+ws = 8080

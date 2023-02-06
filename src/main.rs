@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 #[cfg(feature = "bq_logging")]
 mod bigquery;
+mod config;
 pub(crate) mod error;
 mod tcp_handling;
 mod topics;
@@ -22,6 +23,7 @@ use tokio_rustls::rustls::{self, Certificate, PrivateKey};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
+use crate::config::Configuration;
 use crate::tcp_handling::Client;
 use error::Result;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Registry};
@@ -43,27 +45,30 @@ async fn main() -> Result {
                 .with_bracketed_fields(true),
         )
         .init();
+    // Load our config
+    let config = Configuration::load()?;
     info!("Starting MCloudTT!");
+    main_loop(config).await
+}
+async fn main_loop(config: Configuration) -> Result {
     let topics = Arc::new(Mutex::new(Topics::default()));
 
     // MQTT over TCP
-    let listener = TcpListener::bind(LISTENER_ADDR.to_owned() + ":1883").await?;
+    let listener =
+        TcpListener::bind(LISTENER_ADDR.to_owned() + ":" + &config.ports.tcp.to_string()).await?;
     // MQTT over WebSockets
-    let ws_listener = TcpListener::bind(LISTENER_ADDR.to_owned() + ":8080").await?;
-
-    println!("Serving at {:?}", listener.local_addr());
+    let ws_listener =
+        TcpListener::bind(LISTENER_ADDR.to_owned() + ":" + &config.ports.ws.to_string()).await?;
 
     //TLS
-    let certs = load_certs(Path::new("certs/broker/broker.crt"))?;
-    let mut keys = load_keys(Path::new("certs/broker/broker.key"))?;
+    let certs = load_certs(Path::new(&config.tls.certfile))?;
+    let mut keys = load_keys(Path::new(&config.tls.keyfile))?;
 
     let config = rustls::ServerConfig::builder()
         .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(certs, keys.remove(0))
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-
-    println!("TLS config: {:?}", config);
 
     let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
 
