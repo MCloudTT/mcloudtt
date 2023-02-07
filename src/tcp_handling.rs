@@ -164,14 +164,18 @@ impl Client {
             }
             Err(ref e) => info!("Could not send message to topic because of `{0}`", e),
         };
-        if packet.qos != QoS::AtMostOnce {
-            let puback = Packet::PublishAck(PublishAckPacket {
-                packet_id: packet.packet_id.unwrap(),
-                reason_code: reason_code,
-                reason_string: None,
-                user_properties: vec![],
-            });
-            return Self::write_to_stream(stream, &puback).await;
+        match packet.qos {
+            QoS::AtMostOnce => {}
+            QoS::AtLeastOnce => {
+                let puback = Packet::PublishAck(PublishAckPacket {
+                    packet_id: packet.packet_id.unwrap(),
+                    reason_code,
+                    reason_string: None,
+                    user_properties: vec![],
+                });
+                Self::write_to_stream(stream, &puback).await?;
+            }
+            QoS::ExactlyOnce => {}
         }
         #[cfg(feature = "bq_logging")]
         log_in_bq(
@@ -277,6 +281,7 @@ impl Client {
             Some(Packet::Subscribe(p)) => self.handle_subscribe_packet(stream, &peer, &p).await,
             Some(Packet::Disconnect(p)) => self.handle_disconnect_packet(stream, &peer, &p).await,
             Some(Packet::Unsubscribe(p)) => self.handle_unsubscribe_packet(stream, &peer, &p).await,
+            Some(Packet::PublishAck(p)) => Ok(()),
             _ => {
                 info!("No known packet-type");
                 Err(MCloudError::UnknownPacketType)
@@ -307,7 +312,7 @@ impl Client {
             session_expiry_interval: None,
             receive_maximum: None,
             // temp qos on 1
-            maximum_qos: Some(MaximumQos(QoS::AtMostOnce)),
+            maximum_qos: Some(MaximumQos(QoS::AtLeastOnce)),
             retain_available: None,
             maximum_packet_size: Some(MaximumPacketSize(1024)),
             // TODO: assign unique client_identifier
