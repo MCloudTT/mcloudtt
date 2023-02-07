@@ -3,10 +3,6 @@ use crate::bigquery::log_in_bq;
 use crate::error::{MCloudError, Result};
 use crate::topics::{Message, Topics};
 use bytes::BytesMut;
-use std::fmt::Debug;
-use std::marker::Unpin;
-use std::str;
-
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
 use mqtt_v5::topic::TopicFilter;
@@ -19,9 +15,12 @@ use mqtt_v5::types::{
 };
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use std::future::Future;
+use std::marker::Unpin;
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::str;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -113,7 +112,7 @@ impl Client {
                         },
                     }
                 }
-                key = ReceiverFuture:: new(self.receivers.iter().collect()) => {
+                key = ReceiverFuture::new(self.receivers.iter().collect()) => {
                     let message = self.receivers.get_mut(&key).unwrap().recv().await;
                     debug!("Receiver has message: {:?}", message);
                     match message {
@@ -126,7 +125,7 @@ impl Client {
                         _ => continue,
                     };
                 }
-                _ = tokio:: time:: sleep(Duration::from_secs(10)) => {
+                _ = tokio::time::sleep(Duration::from_secs(10)) => {
                     info!("Will delay interval has passed");
                     self.publish_will(&mut stream, &addr).await?;
                 }
@@ -343,11 +342,9 @@ impl Client {
     ) -> Result {
         let reason = packet.reason_code;
         info!("{:?} disconnect with reason-code: {:?}", peer, reason);
-
         if reason == DisconnectReason::DisconnectWithWillMessage {
             self.publish_will(stream, peer).await?;
         }
-
         Err(MCloudError::ClientDisconnected((&peer).to_string()))
     }
 
@@ -550,8 +547,10 @@ mod tests {
         writer.write_all(&publish_packet).await.unwrap();
         writer.flush().await.unwrap();
         sleep(Duration::from_millis(100)).await;
+
         // Receiver should have one message
         assert_eq!(1, receiver.len());
+
         // Receiver should have the message "test"
         let msg = receiver.recv().await.unwrap();
         match msg {
