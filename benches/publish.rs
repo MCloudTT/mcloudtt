@@ -1,10 +1,28 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::async_executor::AsyncExecutor;
+use criterion::async_executor::FuturesExecutor;
+use criterion::{black_box, criterion_group, criterion_main, AsyncBencher, Criterion};
+use lazy_static::lazy_static;
 use paho_mqtt as mqtt;
+use paho_mqtt::AsyncClient;
 use std::env;
-const HOST: &str = "localhost";
-fn try_publish() {}
 
-fn criterion_benchmark(c: &mut Criterion) {
+const HOST: &str = "localhost";
+
+// Load config
+lazy_static! {
+    static ref CLIENT: AsyncClient = mqtt::CreateOptionsBuilder::new()
+        .server_uri(HOST)
+        .client_id("demo_client")
+        .max_buffered_messages(100)
+        .create_client()
+        .unwrap();
+}
+
+async fn try_publish(msg: mqtt::Message) {
+    CLIENT.publish(msg).await.unwrap();
+}
+
+async fn criterion_benchmark(c: &mut Criterion) {
     const CA_CRT: &str = "ca.crt";
     const CLIENT_KEY: &str = "client.key";
 
@@ -13,12 +31,6 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let mut client_key = env::current_dir().unwrap();
     client_key.push(CLIENT_KEY);
-    let cli = mqtt::CreateOptionsBuilder::new()
-        .server_uri(HOST)
-        .client_id("demo_client")
-        .max_buffered_messages(100)
-        .create_client()
-        .unwrap();
 
     let ssl_opts = mqtt::SslOptionsBuilder::new()
         .trust_store(ca_crt)
@@ -34,8 +46,16 @@ fn criterion_benchmark(c: &mut Criterion) {
         .ssl_options(ssl_opts)
         .finalize();
 
-    cli.connect(conn_opts).await.unwrap();
-    c.bench_function("fib 20", |b| b.iter(|| try_publish(black_box(data))));
+    CLIENT.connect(conn_opts).await.unwrap();
+    let data = mqtt::MessageBuilder::new()
+        .topic("Thisisatesttopic")
+        .payload("Oh hi Mark")
+        .qos(0)
+        .finalize();
+    c.bench_function("fib 20", |b| {
+        b.to_async(FuturesExecutor)
+            .iter(|| try_publish(black_box(data.clone())))
+    });
 }
 
 criterion_group!(benches, criterion_benchmark);
