@@ -20,10 +20,19 @@ pub(crate) struct General {
 }
 
 #[derive(Debug, Deserialize)]
+pub(crate) struct BigQuery {
+    pub(crate) project_id: String,
+    pub(crate) dataset_id: String,
+    pub(crate) table_id: String,
+    pub(crate) credentials_path: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub(crate) struct Configuration {
     pub(crate) ports: Ports,
     pub(crate) tls: Tls,
     pub(crate) general: General,
+    pub(crate) bigquery: BigQuery,
 }
 
 impl Configuration {

@@ -1,12 +1,14 @@
 use clap::Parser;
 use paho_mqtt as mqtt;
-use rand::{thread_rng, Rng};
 use std::env;
 
 #[derive(Parser)]
 struct Args {
     host: String,
     topic: String,
+    file: String,
+    column: usize,
+    interval: u64,
 }
 
 #[tokio::main]
@@ -21,6 +23,8 @@ async fn main() {
     client_key.push(CLIENT_KEY);
 
     let args = Args::parse();
+
+    let csv_file = std::fs::File::open(&args.file).unwrap();
 
     let cli = mqtt::CreateOptionsBuilder::new()
         .server_uri(&args.host)
@@ -45,18 +49,20 @@ async fn main() {
 
     cli.connect(conn_opts).await.unwrap();
 
-    let mut rng = rand::thread_rng();
+    let mut csv_rdr = csv::Reader::from_reader(csv_file);
 
-    loop {
+    for result in csv_rdr.records() {
+        let record = result.unwrap();
+
         let msg = mqtt::MessageBuilder::new()
             .topic(&args.topic)
-            .payload(format!("{:.2}", &rng.gen_range(20.0..25.0)))
+            .payload(record.get(args.column).unwrap())
             .qos(0)
             .finalize();
 
         cli.publish(msg).await.unwrap();
 
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(args.interval)).await;
     }
 
     cli.disconnect(None).await.unwrap();

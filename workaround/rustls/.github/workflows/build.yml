@@ -1,0 +1,290 @@
+name: rustls
+
+permissions:
+  contents: read
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 18 * * *'
+
+jobs:
+  build:
+    name: Build+test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        # test a bunch of toolchains on ubuntu
+        rust:
+          - stable
+          - beta
+          - nightly
+          - 1.57 # MSRV
+        os: [ubuntu-20.04]
+        # but only stable on macos/windows (slower platforms)
+        include:
+          - os: macos-latest
+            rust: stable
+          - os: windows-latest
+            rust: stable
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: Install ${{ matrix.rust }} toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          override: true
+
+      - name: cargo build (debug; default features)
+        run: cargo build
+
+      - name: cargo test (debug; all features)
+        run: cargo test --all-features
+        env:
+          RUST_BACKTRACE: 1
+
+
+  features:
+    name: Features
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: cargo build (debug; default features)
+        run: cargo build
+
+      - name: cargo test (debug; default features)
+        run: cargo test
+        env:
+          RUST_BACKTRACE: 1
+
+      - name: cargo build (debug; no default features)
+        run: cargo build --no-default-features
+        working-directory: rustls
+
+      - name: cargo test (debug; no default features)
+        run: cargo test --no-default-features
+        working-directory: rustls
+
+      - name: cargo test (release; no run)
+        run: cargo test --release --no-run
+
+  bogo:
+    name: BoGo test suite
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Install golang toolchain
+        uses: actions/setup-go@v2
+        with:
+          go-version: "1.17.1"
+
+      - name: Run test suite
+        working-directory: bogo
+        run: ./runme
+
+
+  fuzz:
+    name: Smoke-test fuzzing targets
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: Install nightly toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          default: true
+
+      - name: Install cargo fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Smoke-test fuzz targets
+        run: |
+          cargo fuzz build
+          for target in $(cargo fuzz list) ; do
+            cargo fuzz run $target -- -max_total_time=10
+          done
+
+
+  benchmarks:
+    name: Smoke-test benchmarks
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Smoke-test benchmark program
+        run: cargo run --release --example bench
+
+  docs:
+    name: Check for documentation errors
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          default: true
+
+      - name: cargo doc (all features)
+        run: cargo doc --all-features --no-deps --workspace
+        env:
+          RUSTDOCFLAGS: -Dwarnings
+
+  coverage:
+    name: Measure coverage
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          default: true
+          components: llvm-tools
+
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov
+
+      - name: Install golang toolchain
+        uses: actions/setup-go@v2
+        with:
+          go-version: "1.17.1"
+
+      - name: Measure coverage
+        run: ./admin/coverage --lcov --output-path final.info
+
+      - name: Report to codecov.io
+        uses: codecov/codecov-action@v1.0.10
+        with:
+          file: final.info
+          fail_ci_if_error: false
+
+
+  minver:
+    name: Check minimum versions
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          default: true
+
+      - name: cargo test (debug; all features; -Z minimal-versions)
+        run: cargo -Z minimal-versions test --all-features
+
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          default: true
+          components: rustfmt
+      - name: Check formatting
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          default: true
+          components: clippy
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -p rustls --all-features -- -D warnings
+
+  clippy-nightly:
+    name: Clippy (Nightly)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          default: true
+          components: clippy
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -p rustls --all-features
