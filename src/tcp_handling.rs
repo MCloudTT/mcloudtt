@@ -37,6 +37,7 @@ pub struct Client {
     pub receivers: BTreeMap<String, Receiver<Message>>,
     pub topics: Arc<Mutex<Topics>>,
     pub will: Option<FinalWill>,
+    outgoing_messages: Vec<PublishPacket>,
 }
 
 pub trait MCStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
@@ -75,6 +76,7 @@ impl Client {
             receivers: BTreeMap::new(),
             topics,
             will: None,
+            outgoing_messages: Vec::new(),
         }
     }
 
@@ -119,6 +121,11 @@ impl Client {
                         // We need to only handle publish here
                         Ok(Message::Publish(packet)) => {
                             info!("Subscriber received new message");
+
+                            if &packet.qos == &QoS::AtLeastOnce {
+                                self.outgoing_messages.push(packet.clone());
+                            }
+
                             let send_packet = Packet::Publish(packet);
                             Self::write_to_stream(&mut stream, &send_packet).await?;
                         },
@@ -182,6 +189,13 @@ impl Client {
             str::from_utf8(&packet.payload).unwrap().to_string(),
         )
         .await;
+        Ok(())
+    }
+
+    fn handle_publishack_packet(&mut self, packet: &PublishAckPacket) -> Result {
+        self.outgoing_messages
+            .retain(|p| p.packet_id != Some(packet.packet_id));
+
         Ok(())
     }
 
@@ -280,7 +294,7 @@ impl Client {
             Some(Packet::Subscribe(p)) => self.handle_subscribe_packet(stream, &peer, &p).await,
             Some(Packet::Disconnect(p)) => self.handle_disconnect_packet(stream, &peer, &p).await,
             Some(Packet::Unsubscribe(p)) => self.handle_unsubscribe_packet(stream, &peer, &p).await,
-            Some(Packet::PublishAck(p)) => Ok(()),
+            Some(Packet::PublishAck(p)) => self.handle_publishack_packet(&p),
             _ => {
                 info!("No known packet-type");
                 Err(MCloudError::UnknownPacketType)
