@@ -136,6 +136,12 @@ impl Client {
                     info!("Will delay interval has passed");
                     self.publish_will(&mut stream, &addr).await?;
                 }
+                _ = tokio::time::sleep(Duration::from_secs(5)), if self.outgoing_messages.len() != 0 => {
+                    for packet in self.outgoing_messages.iter() {
+                        let send_packet = Packet::Publish(packet.clone());
+                        Self::write_to_stream(&mut stream, &send_packet).await?;
+                    }
+                }
             }
         }
     }
