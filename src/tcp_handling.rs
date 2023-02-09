@@ -2,6 +2,7 @@
 use crate::bigquery::log_in_bq;
 use crate::error::{MCloudError, Result};
 use crate::topics::{Message, Topics};
+use crate::SETTINGS;
 use bytes::BytesMut;
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
@@ -144,7 +145,7 @@ impl Client {
                         _ => continue,
                     };
                 }
-                _ = tokio::time::sleep(Duration::from_secs(10 + 2)) => {
+                _ = tokio::time::sleep(Duration::from_secs((SETTINGS.general.timeout + 2).into())) => {
                     info!("Will delay interval has passed");
                     self.publish_will(&mut stream, &addr).await?;
                 }
@@ -360,7 +361,7 @@ impl Client {
             wildcard_subscription_available: None,
             subscription_identifiers_available: None,
             shared_subscription_available: None,
-            server_keep_alive: Some(ServerKeepAlive(10)),
+            server_keep_alive: Some(ServerKeepAlive(SETTINGS.general.timeout)),
             response_information: None,
             server_reference: None,
             authentication_method: None,
