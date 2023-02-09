@@ -2,15 +2,14 @@
 use crate::bigquery::log_in_bq;
 use crate::error::{MCloudError, Result};
 use crate::topics::{Message, Topics};
+use crate::SETTINGS;
 use bytes::BytesMut;
-use std::fmt::Debug;
-use std::marker::Unpin;
-use std::str;
-
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
 use mqtt_v5::topic::TopicFilter;
-use mqtt_v5::types::properties::{MaximumPacketSize, MaximumQos, ServerKeepAlive};
+use mqtt_v5::types::properties::{
+    MaximumPacketSize, MaximumQos, MessageExpiryInterval, ServerKeepAlive,
+};
 use mqtt_v5::types::{
     ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, DisconnectReason, FinalWill,
     Packet, ProtocolVersion, PublishAckPacket, PublishPacket, QoS, SubscribeAckPacket,
@@ -19,9 +18,12 @@ use mqtt_v5::types::{
 };
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use std::future::Future;
+use std::marker::Unpin;
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::str;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -38,6 +40,7 @@ pub struct Client {
     pub receivers: BTreeMap<String, Receiver<Message>>,
     pub topics: Arc<Mutex<Topics>>,
     pub will: Option<FinalWill>,
+    outgoing_messages: Vec<OutgoingMessage>,
 }
 
 pub trait MCStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
@@ -69,6 +72,12 @@ impl Future for ReceiverFuture<'_> {
     }
 }
 
+#[derive(Debug)]
+struct OutgoingMessage {
+    pub packet: PublishPacket,
+    pub counter: MessageExpiryInterval,
+}
+
 impl Client {
     pub fn new(sender: Sender<Message>, topics: Arc<Mutex<Topics>>) -> Self {
         Self {
@@ -76,6 +85,7 @@ impl Client {
             receivers: BTreeMap::new(),
             topics,
             will: None,
+            outgoing_messages: Vec::new(),
         }
     }
 
@@ -113,22 +123,43 @@ impl Client {
                         },
                     }
                 }
-                key = ReceiverFuture:: new(self.receivers.iter().collect()) => {
+                key = ReceiverFuture::new(self.receivers.iter().collect()) => {
                     let message = self.receivers.get_mut(&key).unwrap().recv().await;
                     debug!("Receiver has message: {:?}", message);
                     match message {
                         // We need to only handle publish here
                         Ok(Message::Publish(packet)) => {
                             info!("Subscriber received new message");
+
+                            if &packet.qos == &QoS::AtLeastOnce {
+                                let outgoing_packet = OutgoingMessage {
+                                    packet: packet.clone(),
+                                    counter: packet.message_expiry_interval.clone().unwrap_or(MessageExpiryInterval(1)),
+                                };
+                                self.outgoing_messages.push(outgoing_packet);
+                            }
+
                             let send_packet = Packet::Publish(packet);
                             Self::write_to_stream(&mut stream, &send_packet).await?;
                         },
                         _ => continue,
                     };
                 }
-                _ = tokio:: time:: sleep(Duration::from_secs(10)) => {
+                _ = tokio::time::sleep(Duration::from_secs((SETTINGS.general.timeout + 2).into())) => {
                     info!("Will delay interval has passed");
                     self.publish_will(&mut stream, &addr).await?;
+                }
+                _ = tokio::time::sleep(Duration::from_secs(1)), if !self.outgoing_messages.is_empty() => {
+                    for packet in self.outgoing_messages.iter_mut() {
+                        packet.counter.0 -= 1;
+                        if packet.counter.0 == 0 {
+                            info!("Message has expired");
+                            continue;
+                        }
+                        let send_packet = Packet::Publish(packet.packet.clone());
+                        Self::write_to_stream(&mut stream, &send_packet).await?;
+                    }
+                    self.outgoing_messages.retain(|packet| packet.counter.0 != 0);
                 }
             }
         }
@@ -164,14 +195,18 @@ impl Client {
             }
             Err(ref e) => info!("Could not send message to topic because of `{0}`", e),
         };
-        if packet.qos != QoS::AtMostOnce {
-            let puback = Packet::PublishAck(PublishAckPacket {
-                packet_id: packet.packet_id.unwrap(),
-                reason_code: reason_code,
-                reason_string: None,
-                user_properties: vec![],
-            });
-            return Self::write_to_stream(stream, &puback).await;
+        match packet.qos {
+            QoS::AtMostOnce => {}
+            QoS::AtLeastOnce => {
+                let puback = Packet::PublishAck(PublishAckPacket {
+                    packet_id: packet.packet_id.unwrap(),
+                    reason_code,
+                    reason_string: None,
+                    user_properties: vec![],
+                });
+                Self::write_to_stream(stream, &puback).await?;
+            }
+            QoS::ExactlyOnce => {}
         }
         #[cfg(feature = "bq_logging")]
         log_in_bq(
@@ -179,6 +214,13 @@ impl Client {
             str::from_utf8(&packet.payload).unwrap().to_string(),
         )
         .await;
+        Ok(())
+    }
+
+    fn handle_publishack_packet(&mut self, packet: &PublishAckPacket) -> Result {
+        self.outgoing_messages
+            .retain(|p| p.packet.packet_id != Some(packet.packet_id));
+
         Ok(())
     }
 
@@ -277,6 +319,7 @@ impl Client {
             Some(Packet::Subscribe(p)) => self.handle_subscribe_packet(stream, &peer, &p).await,
             Some(Packet::Disconnect(p)) => self.handle_disconnect_packet(stream, &peer, &p).await,
             Some(Packet::Unsubscribe(p)) => self.handle_unsubscribe_packet(stream, &peer, &p).await,
+            Some(Packet::PublishAck(p)) => self.handle_publishack_packet(&p),
             _ => {
                 info!("No known packet-type");
                 Err(MCloudError::UnknownPacketType)
@@ -307,7 +350,7 @@ impl Client {
             session_expiry_interval: None,
             receive_maximum: None,
             // temp qos on 1
-            maximum_qos: Some(MaximumQos(QoS::AtMostOnce)),
+            maximum_qos: Some(MaximumQos(QoS::AtLeastOnce)),
             retain_available: None,
             maximum_packet_size: Some(MaximumPacketSize(1024)),
             // TODO: assign unique client_identifier
@@ -318,7 +361,7 @@ impl Client {
             wildcard_subscription_available: None,
             subscription_identifiers_available: None,
             shared_subscription_available: None,
-            server_keep_alive: Some(ServerKeepAlive(10)),
+            server_keep_alive: Some(ServerKeepAlive(SETTINGS.general.timeout)),
             response_information: None,
             server_reference: None,
             authentication_method: None,
@@ -338,11 +381,9 @@ impl Client {
     ) -> Result {
         let reason = packet.reason_code;
         info!("{:?} disconnect with reason-code: {:?}", peer, reason);
-
         if reason == DisconnectReason::DisconnectWithWillMessage {
             self.publish_will(stream, peer).await?;
         }
-
         Err(MCloudError::ClientDisconnected((&peer).to_string()))
     }
 
@@ -545,8 +586,10 @@ mod tests {
         writer.write_all(&publish_packet).await.unwrap();
         writer.flush().await.unwrap();
         sleep(Duration::from_millis(100)).await;
+
         // Receiver should have one message
         assert_eq!(1, receiver.len());
+
         // Receiver should have the message "test"
         let msg = receiver.recv().await.unwrap();
         match msg {
