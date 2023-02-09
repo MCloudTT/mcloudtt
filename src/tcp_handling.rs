@@ -6,7 +6,9 @@ use bytes::BytesMut;
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
 use mqtt_v5::topic::TopicFilter;
-use mqtt_v5::types::properties::{MaximumPacketSize, MaximumQos, ServerKeepAlive};
+use mqtt_v5::types::properties::{
+    MaximumPacketSize, MaximumQos, MessageExpiryInterval, ServerKeepAlive,
+};
 use mqtt_v5::types::{
     ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, DisconnectReason, FinalWill,
     Packet, ProtocolVersion, PublishAckPacket, PublishPacket, QoS, SubscribeAckPacket,
@@ -37,7 +39,7 @@ pub struct Client {
     pub receivers: BTreeMap<String, Receiver<Message>>,
     pub topics: Arc<Mutex<Topics>>,
     pub will: Option<FinalWill>,
-    outgoing_messages: Vec<PublishPacket>,
+    outgoing_messages: Vec<OutgoingMessage>,
 }
 
 pub trait MCStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
@@ -67,6 +69,12 @@ impl Future for ReceiverFuture<'_> {
             Poll::Pending
         }
     }
+}
+
+#[derive(Debug)]
+struct OutgoingMessage {
+    pub packet: PublishPacket,
+    pub counter: MessageExpiryInterval,
 }
 
 impl Client {
@@ -123,7 +131,11 @@ impl Client {
                             info!("Subscriber received new message");
 
                             if &packet.qos == &QoS::AtLeastOnce {
-                                self.outgoing_messages.push(packet.clone());
+                                let outgoing_packet = OutgoingMessage {
+                                    packet: packet.clone(),
+                                    counter: packet.message_expiry_interval.clone().unwrap_or(MessageExpiryInterval(1)),
+                                };
+                                self.outgoing_messages.push(outgoing_packet);
                             }
 
                             let send_packet = Packet::Publish(packet);
@@ -136,11 +148,17 @@ impl Client {
                     info!("Will delay interval has passed");
                     self.publish_will(&mut stream, &addr).await?;
                 }
-                _ = tokio::time::sleep(Duration::from_secs(5)), if self.outgoing_messages.len() != 0 => {
-                    for packet in self.outgoing_messages.iter() {
-                        let send_packet = Packet::Publish(packet.clone());
+                _ = tokio::time::sleep(Duration::from_secs(1)), if self.outgoing_messages.len() != 0 => {
+                    for packet in self.outgoing_messages.iter_mut() {
+                        packet.counter.0 -= 1;
+                        if packet.counter.0 == 0 {
+                            info!("Message has expired");
+                            continue;
+                        }
+                        let send_packet = Packet::Publish(packet.packet.clone());
                         Self::write_to_stream(&mut stream, &send_packet).await?;
                     }
+                    self.outgoing_messages.retain(|packet| packet.counter.0 != 0);
                 }
             }
         }
@@ -200,7 +218,7 @@ impl Client {
 
     fn handle_publishack_packet(&mut self, packet: &PublishAckPacket) -> Result {
         self.outgoing_messages
-            .retain(|p| p.packet_id != Some(packet.packet_id));
+            .retain(|p| p.packet.packet_id != Some(packet.packet_id));
 
         Ok(())
     }
