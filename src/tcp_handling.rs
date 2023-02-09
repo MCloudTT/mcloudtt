@@ -144,7 +144,7 @@ impl Client {
                         _ => continue,
                     };
                 }
-                _ = tokio::time::sleep(Duration::from_secs(10)) => {
+                _ = tokio::time::sleep(Duration::from_secs(10 + 2)) => {
                     info!("Will delay interval has passed");
                     self.publish_will(&mut stream, &addr).await?;
                 }
