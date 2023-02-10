@@ -1,5 +1,6 @@
 [general]
 websocket = true
+timeout = 10
 
 [tls]
 certfile = "certs/broker/broker.crt"

@@ -17,6 +17,7 @@ pub(crate) struct Tls {
 #[derive(Debug, Deserialize)]
 pub(crate) struct General {
     pub(crate) websocket: bool,
+    pub(crate) timeout: u16,
 }
 
 #[derive(Debug, Deserialize)]

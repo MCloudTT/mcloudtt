@@ -1,7 +1,0 @@
-[workspace]
-members = [
-    "tokio-native-tls",
-    "tokio-rustls",
-    "tokio-rustls/examples/client",
-    "tokio-rustls/examples/server"
-]
