@@ -3,6 +3,7 @@
 mod bigquery;
 mod config;
 pub(crate) mod error;
+mod redis_client;
 mod tcp_handling;
 mod topics;
 
