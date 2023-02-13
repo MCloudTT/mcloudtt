@@ -201,6 +201,14 @@ impl Client {
             }
             Err(ref e) => info!("Could not send message to topic because of `{0}`", e),
         };
+
+        info!("Send message to redis");
+
+        self.redis_sender
+            .send(packet.clone())
+            .await
+            .expect("Could not send message to redis");
+
         match packet.qos {
             QoS::AtMostOnce => {}
             QoS::AtLeastOnce => {

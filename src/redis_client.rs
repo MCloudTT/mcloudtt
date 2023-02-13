@@ -1,7 +1,7 @@
 use mqtt_v5::{topic::Topic, types::PublishPacket};
-use redis::{Client, Commands, PubSub};
+use redis::{Client, Commands, Connection, Msg};
 use serde::{Deserialize, Serialize};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::{topics::Topics, Arc};
 use std::{str::FromStr, sync::Mutex};
@@ -28,19 +28,18 @@ impl RedisClient {
     }
     pub async fn listen(&mut self) {
         let mut con = self.client.get_connection().unwrap();
-        let mut con_sub = con.as_pubsub();
-        con_sub.subscribe("sync").unwrap();
+        let (sender, mut sub_thread_receiver) = tokio::sync::mpsc::channel::<String>(200);
+        tokio::spawn(async move { Self::receive_from_redis(&mut con, sender).await });
 
         loop {
             tokio::select! {
                 Some(message) = self.receiver.recv() => {
+                    info!("Message received from mqtt broker and publish to redis");
                     self.publish(message);
                 }
-                msg = Self::receive_from_redis(&mut con_sub) => {
-                    match msg.get_payload::<String>() {
-                        Ok(msg) => self.handle_message(msg),
-                        Err(e) => error!("Error getting message from redis: {:?}", e),
-                    }
+                Some(redis_message) = sub_thread_receiver.recv() => {
+                    info!("Message received from redis and publish to mqtt broker");
+                    self.handle_message(redis_message);
                 }
             }
         }
@@ -52,25 +51,37 @@ impl RedisClient {
             qos: message.qos as u8,
         };
         let mut con = self.client.get_connection().unwrap();
-        Commands::publish::<_, _, String>(
+        let _ = Commands::publish::<_, _, String>(
             &mut con,
             "sync",
             serde_json::to_value(redis_message).unwrap().to_string(),
-        )
-        .unwrap();
+        );
     }
     fn handle_message(&self, message: String) {
         let redis_message: RedisMessage = serde_json::from_str(&message).unwrap();
         let topic = Topic::from_str(&redis_message.topic).unwrap();
         let publish_packet = PublishPacket::new(topic, redis_message.payload.into());
         match self.topics.lock().unwrap().publish(publish_packet) {
-            Ok(_) => info!("Message sent to redis: {0}", message),
-            Err(ref e) => error!("Could not send message to redis because of `{0}`", e),
+            Ok(_) => info!("Message received from redis and publish to topic"),
+            Err(ref e) => error!("Could not send message to channel because of `{0}`", e),
         };
     }
-    async fn receive_from_redis(con: &mut PubSub<'_>) -> redis::Msg {
-        let msg = con.get_message().unwrap();
-        msg
+    async fn receive_from_redis(con: &mut Connection, sender: tokio::sync::mpsc::Sender<String>) {
+        let mut con_sub = con.as_pubsub();
+        con_sub.subscribe("sync").unwrap();
+        loop {
+            let msg = con_sub.get_message().unwrap();
+            match msg.get_payload::<String>() {
+                Ok(msg) => {
+                    info!("Message received from redis: {:?}", msg);
+                    match &sender.send(msg.clone()).await {
+                        Ok(_) => info!("Message sent to mqtt broker"),
+                        Err(e) => error!("Error sending message to mqtt broker: {:?}", e),
+                    }
+                }
+                Err(e) => error!("Error getting message from redis: {:?}", e),
+            }
+        }
     }
 }
 
