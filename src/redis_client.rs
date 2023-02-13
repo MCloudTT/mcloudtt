@@ -1,7 +1,7 @@
 use mqtt_v5::{topic::Topic, types::PublishPacket};
-use redis::{Client, Commands, Connection, Msg};
+use redis::{Client, Commands, Connection};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use crate::{topics::Topics, Arc};
 use std::{str::FromStr, sync::Mutex};
@@ -70,17 +70,19 @@ impl RedisClient {
         let mut con_sub = con.as_pubsub();
         con_sub.subscribe("sync").unwrap();
         loop {
-            let msg = con_sub.get_message().unwrap();
-            match msg.get_payload::<String>() {
-                Ok(msg) => {
-                    info!("Message received from redis: {:?}", msg);
-                    match &sender.send(msg.clone()).await {
-                        Ok(_) => info!("Message sent to mqtt broker"),
-                        Err(e) => error!("Error sending message to mqtt broker: {:?}", e),
+            tokio::task::block_in_place(|| {
+                let msg = con_sub.get_message().unwrap();
+                match msg.get_payload::<String>() {
+                    Ok(msg) => {
+                        info!("Message received from redis: {:?}", &msg);
+                        match sender.blocking_send(msg.clone()) {
+                            Ok(_) => info!("Message sent to mqtt broker"),
+                            Err(e) => error!("Error sending message to mqtt broker: {:?}", e),
+                        }
                     }
+                    Err(e) => error!("Error getting message from redis: {:?}", e),
                 }
-                Err(e) => error!("Error getting message from redis: {:?}", e),
-            }
+            });
         }
     }
 }
