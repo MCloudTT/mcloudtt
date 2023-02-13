@@ -17,6 +17,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use mqtt_v5::types::PublishPacket;
 use rustls_pemfile::{certs, rsa_private_keys};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -61,6 +62,18 @@ async fn main_loop() -> Result {
 
     let topics = Arc::new(Mutex::new(Topics::default()));
 
+    // Start redis client
+    let (redis_sender, redis_receiver) = tokio::sync::mpsc::channel::<PublishPacket>(200);
+    let mut redis_client = redis_client::RedisClient::new(
+        "redis://127.0.0.1:6379".to_owned(),
+        topics.clone(),
+        redis_receiver,
+    );
+
+    tokio::spawn(async move {
+        redis_client.listen().await;
+    });
+
     // MQTT over TCP
     let listener =
         TcpListener::bind(LISTENER_ADDR.to_owned() + ":" + &settings.ports.tcp.to_string()).await?;
@@ -87,7 +100,7 @@ async fn main_loop() -> Result {
                 raw_tcp_stream = listener.accept() => {
                     match raw_tcp_stream {
                         Ok((stream, addr)) => {
-                            handle_new_connection(stream, addr, tls_acceptor.clone(), topics.clone()).await;
+                            handle_new_connection(stream, addr, tls_acceptor.clone(), topics.clone(), redis_sender.clone()).await;
                         }
                         Err(e) => {
                             info!("Error accepting TCP connection: {:?}", e);
@@ -97,7 +110,7 @@ async fn main_loop() -> Result {
                 raw_ws_stream = ws_listener.accept() => {
                     match raw_ws_stream {
                         Ok((stream, addr)) => {
-                            handle_new_connection(stream, addr, tls_acceptor.clone(), topics.clone()).await;
+                            handle_new_connection(stream, addr, tls_acceptor.clone(), topics.clone(), redis_sender.clone()).await;
                         }
                         Err(e) => {
                             info!("Error accepting WS connection: {:?}", e);
@@ -112,7 +125,7 @@ async fn main_loop() -> Result {
                 raw_tcp_stream = listener.accept() => {
                     match raw_tcp_stream {
                         Ok((stream, addr)) => {
-                            handle_new_connection(stream, addr, tls_acceptor.clone(), topics.clone()).await;
+                            handle_new_connection(stream, addr, tls_acceptor.clone(), topics.clone(), redis_sender.clone()).await;
                         }
                         Err(e) => {
                             info!("Error accepting TCP connection: {:?}", e);
@@ -129,11 +142,12 @@ async fn handle_new_connection(
     addr: SocketAddr,
     tls_acceptor: tokio_rustls::TlsAcceptor,
     topics: Arc<Mutex<Topics>>,
+    redis_sender: tokio::sync::mpsc::Sender<PublishPacket>,
 ) {
     info!("Peer connected: {:?}", &addr);
     if let Ok(stream) = tls_acceptor.accept(stream).await {
         let (sender, _receiver) = tokio::sync::mpsc::channel::<Message>(200);
-        let mut client = Client::new(sender, topics);
+        let mut client = Client::new(sender, topics, redis_sender);
         tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
     } else {
         info!("Peer failed to connect: {:?}", addr);

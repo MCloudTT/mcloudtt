@@ -1,8 +1,5 @@
-use mqtt_v5::{
-    topic::Topic,
-    types::{PublishPacket, QoS},
-};
-use redis::{Client, Commands, RedisWrite, ToRedisArgs};
+use mqtt_v5::{topic::Topic, types::PublishPacket};
+use redis::{Client, Commands, PubSub};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
@@ -29,16 +26,22 @@ impl RedisClient {
             receiver,
         }
     }
-    pub fn listen(&self) {
+    pub async fn listen(&mut self) {
         let mut con = self.client.get_connection().unwrap();
         let mut con_sub = con.as_pubsub();
-
         con_sub.subscribe("sync").unwrap();
+
         loop {
-            let msg = con_sub.get_message().unwrap();
-            match msg.get_payload::<String>() {
-                Ok(msg) => self.handle_message(msg),
-                Err(e) => error!("Error parsing message: {:?}", e),
+            tokio::select! {
+                Some(message) = self.receiver.recv() => {
+                    self.publish(message);
+                }
+                msg = Self::receive_from_redis(&mut con_sub) => {
+                    match msg.get_payload::<String>() {
+                        Ok(msg) => self.handle_message(msg),
+                        Err(e) => error!("Error getting message from redis: {:?}", e),
+                    }
+                }
             }
         }
     }
@@ -64,6 +67,10 @@ impl RedisClient {
             Ok(_) => info!("Message sent to redis: {0}", message),
             Err(ref e) => error!("Could not send message to redis because of `{0}`", e),
         };
+    }
+    async fn receive_from_redis(con: &mut PubSub<'_>) -> redis::Msg {
+        let msg = con.get_message().unwrap();
+        msg
     }
 }
 

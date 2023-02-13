@@ -41,6 +41,7 @@ pub struct Client {
     pub topics: Arc<Mutex<Topics>>,
     pub will: Option<FinalWill>,
     outgoing_messages: Vec<OutgoingMessage>,
+    redis_sender: tokio::sync::mpsc::Sender<PublishPacket>,
 }
 
 pub trait MCStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
@@ -79,13 +80,18 @@ struct OutgoingMessage {
 }
 
 impl Client {
-    pub fn new(sender: Sender<Message>, topics: Arc<Mutex<Topics>>) -> Self {
+    pub fn new(
+        sender: Sender<Message>,
+        topics: Arc<Mutex<Topics>>,
+        redis_sender: tokio::sync::mpsc::Sender<PublishPacket>,
+    ) -> Self {
         Self {
             sender,
             receivers: BTreeMap::new(),
             topics,
             will: None,
             outgoing_messages: Vec::new(),
+            redis_sender,
         }
     }
 
