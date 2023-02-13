@@ -28,7 +28,7 @@ impl RedisClient {
     }
     pub async fn listen(&mut self) {
         let mut con = self.client.get_connection().unwrap();
-        let (sender, mut sub_thread_receiver) = tokio::sync::mpsc::channel::<String>(200);
+        let (sender, mut sub_thread_receiver) = tokio::sync::mpsc::channel::<String>(1024);
         tokio::spawn(async move { Self::receive_from_redis(&mut con, sender).await });
 
         loop {
