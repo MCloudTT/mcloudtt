@@ -41,6 +41,7 @@ pub struct Client {
     pub topics: Arc<Mutex<Topics>>,
     pub will: Option<FinalWill>,
     outgoing_messages: Vec<OutgoingMessage>,
+    redis_sender: tokio::sync::mpsc::Sender<PublishPacket>,
 }
 
 pub trait MCStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
@@ -79,13 +80,18 @@ struct OutgoingMessage {
 }
 
 impl Client {
-    pub fn new(sender: Sender<Message>, topics: Arc<Mutex<Topics>>) -> Self {
+    pub fn new(
+        sender: Sender<Message>,
+        topics: Arc<Mutex<Topics>>,
+        redis_sender: tokio::sync::mpsc::Sender<PublishPacket>,
+    ) -> Self {
         Self {
             sender,
             receivers: BTreeMap::new(),
             topics,
             will: None,
             outgoing_messages: Vec::new(),
+            redis_sender,
         }
     }
 
@@ -195,6 +201,14 @@ impl Client {
             }
             Err(ref e) => info!("Could not send message to topic because of `{0}`", e),
         };
+
+        info!("Send message to redis");
+
+        self.redis_sender
+            .send(packet.clone())
+            .await
+            .expect("Could not send message to redis");
+
         match packet.qos {
             QoS::AtMostOnce => {}
             QoS::AtLeastOnce => {
@@ -464,7 +478,8 @@ mod tests {
 
     fn generate_client(topics: Arc<Mutex<Topics>>) -> Client {
         let (tx, _) = channel(1024);
-        Client::new(tx, topics)
+        let (redis_sender, _) = channel::<PublishPacket>(1024);
+        Client::new(tx, topics, redis_sender)
     }
 
     fn get_packet(packet: &Packet) -> BytesMut {

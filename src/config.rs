@@ -20,6 +20,7 @@ pub(crate) struct General {
     pub(crate) timeout: u16,
 }
 
+#[cfg(feature = "bq_logging")]
 #[derive(Debug, Deserialize)]
 pub(crate) struct BigQuery {
     pub(crate) project_id: String,
@@ -28,12 +29,22 @@ pub(crate) struct BigQuery {
     pub(crate) credentials_path: String,
 }
 
+#[cfg(feature = "redis")]
+#[derive(Debug, Deserialize)]
+pub(crate) struct Redis {
+    pub(crate) host: String,
+    pub(crate) port: u16,
+}
+
 #[derive(Debug, Deserialize)]
 pub(crate) struct Configuration {
     pub(crate) ports: Ports,
     pub(crate) tls: Tls,
     pub(crate) general: General,
+    #[cfg(feature = "bq_logging")]
     pub(crate) bigquery: BigQuery,
+    #[cfg(feature = "redis")]
+    pub(crate) redis: Redis,
 }
 
 impl Configuration {
