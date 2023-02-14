@@ -478,7 +478,8 @@ mod tests {
 
     fn generate_client(topics: Arc<Mutex<Topics>>) -> Client {
         let (tx, _) = channel(1024);
-        Client::new(tx, topics)
+        let (redis_sender, _) = channel::<PublishPacket>(1024);
+        Client::new(tx, topics, redis_sender)
     }
 
     fn get_packet(packet: &Packet) -> BytesMut {
