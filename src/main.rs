@@ -3,6 +3,7 @@
 mod bigquery;
 mod config;
 pub(crate) mod error;
+#[cfg(feature = "redis")]
 mod redis_client;
 mod tcp_handling;
 mod topics;
@@ -62,18 +63,22 @@ async fn main_loop() -> Result {
 
     let topics = Arc::new(Mutex::new(Topics::default()));
 
-    // Start redis client
     let (redis_sender, redis_receiver) = tokio::sync::mpsc::channel::<PublishPacket>(200);
-    let mut redis_client = redis_client::RedisClient::new(
-        settings.redis.host.clone(),
-        settings.redis.port,
-        topics.clone(),
-        redis_receiver,
-    );
 
-    tokio::spawn(async move {
-        redis_client.listen().await;
-    });
+    // Start redis client
+    #[cfg(feature = "redis")]
+    {
+        let mut redis_client = redis_client::RedisClient::new(
+            settings.redis.host.clone(),
+            settings.redis.port,
+            topics.clone(),
+            redis_receiver,
+        );
+
+        tokio::spawn(async move {
+            redis_client.listen().await;
+        });
+    }
 
     // MQTT over TCP
     let listener =
