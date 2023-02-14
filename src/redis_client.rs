@@ -1,4 +1,6 @@
 use mqtt_v5::{topic::Topic, types::PublishPacket};
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use redis::{Client, Commands, Connection};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
@@ -11,6 +13,7 @@ pub struct RedisClient {
     client: Client,
     topics: Arc<Mutex<Topics>>,
     receiver: tokio::sync::mpsc::Receiver<PublishPacket>,
+    sender_id: String,
 }
 
 impl RedisClient {
@@ -24,6 +27,11 @@ impl RedisClient {
             client: redis::Client::open(format!("redis://{0}", host)).unwrap(),
             topics,
             receiver,
+            sender_id: thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(8)
+                .map(char::from)
+                .collect(),
         }
     }
     pub async fn listen(&mut self) {
@@ -46,6 +54,7 @@ impl RedisClient {
     }
     fn publish(&self, message: PublishPacket) {
         let redis_message = RedisMessage {
+            sender_id: self.sender_id.clone(),
             topic: message.topic.topic_name().to_owned(),
             payload: message.payload.to_vec(),
             qos: message.qos as u8,
@@ -59,6 +68,9 @@ impl RedisClient {
     }
     fn handle_message(&self, message: String) {
         let redis_message: RedisMessage = serde_json::from_str(&message).unwrap();
+        if redis_message.sender_id == self.sender_id {
+            return;
+        }
         let topic = Topic::from_str(&redis_message.topic).unwrap();
         let publish_packet = PublishPacket::new(topic, redis_message.payload.into());
         match self.topics.lock().unwrap().publish(publish_packet) {
@@ -89,6 +101,7 @@ impl RedisClient {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct RedisMessage {
+    sender_id: String,
     topic: String,
     payload: Vec<u8>,
     qos: u8,
