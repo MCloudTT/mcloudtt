@@ -33,8 +33,19 @@ impl RedisClient {
                 .collect(),
         }
     }
+    async fn get_connection(&self) -> Connection {
+        loop {
+            match self.client.get_connection() {
+                Ok(con) => return con,
+                Err(e) => {
+                    error!("Error connecting to redis: {0} (retrying in one second)", e);
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+            }
+        }
+    }
     pub async fn listen(&mut self) {
-        let mut con = self.client.get_connection().unwrap();
+        let mut con = self.get_connection().await;
         let (sender, mut sub_thread_receiver) = tokio::sync::mpsc::channel::<String>(1024);
         tokio::spawn(async move { Self::receive_from_redis(&mut con, sender).await });
 
@@ -42,7 +53,7 @@ impl RedisClient {
             tokio::select! {
                 Some(message) = self.receiver.recv() => {
                     info!("Message received from mqtt broker and publish to redis");
-                    self.publish(message);
+                    self.publish(message).await;
                 }
                 Some(redis_message) = sub_thread_receiver.recv() => {
                     info!("Message received from redis and publish to mqtt broker");
@@ -51,14 +62,14 @@ impl RedisClient {
             }
         }
     }
-    fn publish(&self, message: PublishPacket) {
+    async fn publish(&self, message: PublishPacket) {
         let redis_message = RedisMessage {
             sender_id: self.sender_id.clone(),
             topic: message.topic.topic_name().to_owned(),
             payload: message.payload.to_vec(),
             qos: message.qos as u8,
         };
-        let mut con = self.client.get_connection().unwrap();
+        let mut con = self.get_connection().await;
         let _ = Commands::publish::<_, _, String>(
             &mut con,
             "sync",
