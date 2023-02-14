@@ -21,7 +21,11 @@ spec:
         imagePullPolicy: Always
         resources: {}
         ports:
-          - containerPort: 1883 
+          - containerPort: 1883
+      - image: redis:latest
+        name: redis
+        imagePullPolicy: Always
+        resources: {}
 status: {}
 
 ---
