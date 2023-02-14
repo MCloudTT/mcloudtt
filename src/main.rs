@@ -64,8 +64,12 @@ async fn main_loop() -> Result {
 
     // Start redis client
     let (redis_sender, redis_receiver) = tokio::sync::mpsc::channel::<PublishPacket>(200);
-    let mut redis_client =
-        redis_client::RedisClient::new("127.0.0.1:6379".to_owned(), topics.clone(), redis_receiver);
+    let mut redis_client = redis_client::RedisClient::new(
+        settings.redis.host.clone(),
+        settings.redis.port,
+        topics.clone(),
+        redis_receiver,
+    );
 
     tokio::spawn(async move {
         redis_client.listen().await;

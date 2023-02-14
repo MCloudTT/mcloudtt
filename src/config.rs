@@ -29,11 +29,18 @@ pub(crate) struct BigQuery {
 }
 
 #[derive(Debug, Deserialize)]
+pub(crate) struct Redis {
+    pub(crate) host: String,
+    pub(crate) port: u16,
+}
+
+#[derive(Debug, Deserialize)]
 pub(crate) struct Configuration {
     pub(crate) ports: Ports,
     pub(crate) tls: Tls,
     pub(crate) general: General,
     pub(crate) bigquery: BigQuery,
+    pub(crate) redis: Redis,
 }
 
 impl Configuration {

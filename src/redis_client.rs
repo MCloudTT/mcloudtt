@@ -9,7 +9,6 @@ use crate::{topics::Topics, Arc};
 use std::{str::FromStr, sync::Mutex};
 
 pub struct RedisClient {
-    host: String,
     client: Client,
     topics: Arc<Mutex<Topics>>,
     receiver: tokio::sync::mpsc::Receiver<PublishPacket>,
@@ -19,12 +18,12 @@ pub struct RedisClient {
 impl RedisClient {
     pub fn new(
         host: String,
+        port: u16,
         topics: Arc<Mutex<Topics>>,
         receiver: tokio::sync::mpsc::Receiver<PublishPacket>,
     ) -> Self {
         Self {
-            host: host.clone(),
-            client: redis::Client::open(format!("redis://{0}", host)).unwrap(),
+            client: redis::Client::open(format!("redis://{0}:{1}", host, port)).unwrap(),
             topics,
             receiver,
             sender_id: thread_rng()

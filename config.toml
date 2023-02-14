@@ -15,3 +15,7 @@ project_id = "azubi-knowhow-building"
 dataset_id = "mcloudttbq"
 table_id = "topic-log"
 credentials_path = "sa.key"
+
+[redis]
+host = "127.0.0.1"
+port = 6379
