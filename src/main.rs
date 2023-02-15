@@ -47,14 +47,17 @@ lazy_static! {
 #[tokio::main]
 async fn main() -> Result {
     // Set up tracing_tree
+
     Registry::default()
         .with(EnvFilter::from_default_env())
         .with(
             HierarchicalLayer::new(2)
                 .with_targets(true)
-                .with_bracketed_fields(true),
+                .with_bracketed_fields(true)
+                .with_writer(std::io::stdout),
         )
         .init();
+
     info!("Starting MCloudTT!");
     main_loop().await
 }
