@@ -47,20 +47,14 @@ lazy_static! {
 #[tokio::main]
 async fn main() -> Result {
     // Set up tracing
-    #[cfg(feature = "docker")]
-    let _subscriber = tracing_subscriber::fmt::Subscriber::builder()
-        .with_ansi(true)
-        .with_env_filter(EnvFilter::from_default_env())
-        .with_writer(std::io::stdout)
-        .init();
 
-    #[cfg(not(feature = "docker"))]
     Registry::default()
         .with(EnvFilter::from_default_env())
         .with(
             HierarchicalLayer::new(2)
                 .with_targets(true)
-                .with_bracketed_fields(true),
+                .with_bracketed_fields(true)
+                .with_writer(std::io::stdout),
         )
         .init();
 
