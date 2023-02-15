@@ -85,20 +85,18 @@ async fn main_loop() -> Result {
     // MQTT over WebSockets
     let ws_listener = TcpListener::bind(format!("{LISTENER_ADDR}:{}", settings.ports.ws)).await?;
 
-    #[cfg(feature = "secure")]
-    {
-        //TLS
-        let certs = load_certs(Path::new(&settings.tls.certfile))?;
-        let mut keys = load_keys(Path::new(&settings.tls.keyfile))?;
+    //TLS
+    let certs = load_certs(Path::new(&settings.tls.certfile))?;
+    let mut keys = load_keys(Path::new(&settings.tls.keyfile))?;
 
-        let config = rustls::ServerConfig::builder()
-            .with_safe_defaults()
-            .with_no_client_auth()
-            .with_single_cert(certs, keys.remove(0))
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+    let config = rustls::ServerConfig::builder()
+        .with_safe_defaults()
+        .with_no_client_auth()
+        .with_single_cert(certs, keys.remove(0))
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
 
-        let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
-    }
+    let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
+
     // Start loop based on settings for websocket
     if settings.general.websocket {
         loop {
@@ -127,22 +125,18 @@ async fn main_loop() -> Result {
         }
     } else {
         loop {
-            if let Some(raw_tcp_stream) = listener.accept().await {
-                match raw_tcp_stream {
-                    Ok((stream, addr)) => {
-                        handle_new_connection(
-                            stream,
-                            addr,
-                            tls_acceptor.clone(),
-                            topics.clone(),
-                            redis_sender.clone(),
-                        )
-                        .await;
-                    }
-                    Err(e) => {
-                        info!("Error accepting TCP connection: {:?}", e);
-                    }
-                }
+            if let Ok(raw_tcp_stream) = listener.accept().await {
+                let (stream, addr) = raw_tcp_stream;
+                handle_new_connection(
+                    stream,
+                    addr,
+                    tls_acceptor.clone(),
+                    topics.clone(),
+                    redis_sender.clone(),
+                )
+                .await;
+            } else {
+                info!("Error accepting TCP connection");
             }
         }
     }
