@@ -150,12 +150,21 @@ async fn handle_new_connection(
     redis_sender: tokio::sync::mpsc::Sender<PublishPacket>,
 ) {
     info!("Peer connected: {:?}", &addr);
-    if let Ok(stream) = tls_acceptor.accept(stream).await {
-        let (sender, _receiver) = tokio::sync::mpsc::channel::<Message>(200);
-        let mut client = Client::new(sender, topics, redis_sender);
+
+    let (sender, _receiver) = tokio::sync::mpsc::channel::<Message>(200);
+    let mut client = Client::new(sender, topics, redis_sender);
+
+    #[cfg(feature = "secure")]
+    {
+        if let Ok(stream) = tls_acceptor.accept(stream).await {
+            tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
+        } else {
+            info!("Peer failed to connect using tls: {:?}", addr);
+        }
+    }
+    #[cfg(not(feature = "secure"))]
+    {
         tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
-    } else {
-        info!("Peer failed to connect: {:?}", addr);
     }
 }
 
