@@ -1,3 +1,4 @@
+use crate::SETTINGS;
 use gcp_bigquery_client::{
     model::table_data_insert_all_request::TableDataInsertAllRequest, Client,
 };
@@ -14,13 +15,15 @@ struct LogEntry {
 pub async fn log_in_bq(topic: String, message: String) {
     info!("Loggin in BQ: {0} in {1}", &message, &topic);
 
+    let config = &SETTINGS.bigquery;
+
     let log_entry = LogEntry {
         topic,
         message,
         datetime: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
     };
 
-    let client = Client::from_service_account_key_file("sa.key")
+    let client = Client::from_service_account_key_file(&config.credentials_path)
         .await
         .unwrap();
     let mut request = TableDataInsertAllRequest::new();
@@ -28,7 +31,12 @@ pub async fn log_in_bq(topic: String, message: String) {
 
     match client
         .tabledata()
-        .insert_all("azubi-knowhow-building", "mcloudttbq", "topic-log", request)
+        .insert_all(
+            &config.project_id,
+            &config.dataset_id,
+            &config.table_id,
+            request,
+        )
         .await
     {
         Ok(_) => {}

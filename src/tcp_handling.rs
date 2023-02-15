@@ -2,15 +2,14 @@
 use crate::bigquery::log_in_bq;
 use crate::error::{MCloudError, Result};
 use crate::topics::{Message, Topics};
+use crate::SETTINGS;
 use bytes::BytesMut;
-use std::fmt::Debug;
-use std::marker::Unpin;
-use std::str;
-
 use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
 use mqtt_v5::topic::TopicFilter;
-use mqtt_v5::types::properties::{MaximumPacketSize, MaximumQos, ServerKeepAlive};
+use mqtt_v5::types::properties::{
+    MaximumPacketSize, MaximumQos, MessageExpiryInterval, ServerKeepAlive,
+};
 use mqtt_v5::types::{
     ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, DisconnectReason, FinalWill,
     Packet, ProtocolVersion, PublishAckPacket, PublishPacket, QoS, SubscribeAckPacket,
@@ -19,9 +18,12 @@ use mqtt_v5::types::{
 };
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use std::future::Future;
+use std::marker::Unpin;
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::str;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -38,6 +40,8 @@ pub struct Client {
     pub receivers: BTreeMap<String, Receiver<Message>>,
     pub topics: Arc<Mutex<Topics>>,
     pub will: Option<FinalWill>,
+    outgoing_messages: Vec<OutgoingMessage>,
+    redis_sender: tokio::sync::mpsc::Sender<PublishPacket>,
 }
 
 pub trait MCStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
@@ -69,13 +73,25 @@ impl Future for ReceiverFuture<'_> {
     }
 }
 
+#[derive(Debug)]
+struct OutgoingMessage {
+    pub packet: PublishPacket,
+    pub counter: MessageExpiryInterval,
+}
+
 impl Client {
-    pub fn new(sender: Sender<Message>, topics: Arc<Mutex<Topics>>) -> Self {
+    pub fn new(
+        sender: Sender<Message>,
+        topics: Arc<Mutex<Topics>>,
+        redis_sender: tokio::sync::mpsc::Sender<PublishPacket>,
+    ) -> Self {
         Self {
             sender,
             receivers: BTreeMap::new(),
             topics,
             will: None,
+            outgoing_messages: Vec::new(),
+            redis_sender,
         }
     }
 
@@ -88,7 +104,7 @@ impl Client {
     ) -> Result {
         loop {
             // TODO: bigger buffer?
-            let mut buf = [0; 265];
+            let mut buf = [0; 1024];
 
             tokio::select! {
                 packet = stream.read(&mut buf) => {
@@ -113,25 +129,43 @@ impl Client {
                         },
                     }
                 }
-                key = ReceiverFuture:: new(self.receivers.iter().collect()) => {
+                key = ReceiverFuture::new(self.receivers.iter().collect()) => {
                     let message = self.receivers.get_mut(&key).unwrap().recv().await;
                     debug!("Receiver has message: {:?}", message);
                     match message {
                         // We need to only handle publish here
                         Ok(Message::Publish(packet)) => {
                             info!("Subscriber received new message");
+
+                            if packet.qos == QoS::AtLeastOnce {
+                                let outgoing_packet = OutgoingMessage {
+                                    packet: packet.clone(),
+                                    counter: packet.message_expiry_interval.clone().unwrap_or(MessageExpiryInterval(1)),
+                                };
+                                self.outgoing_messages.push(outgoing_packet);
+                            }
+
                             let send_packet = Packet::Publish(packet);
                             Self::write_to_stream(&mut stream, &send_packet).await?;
                         },
                         _ => continue,
                     };
                 }
-                _ = tokio:: time:: sleep(Duration::from_secs(10)) => {
+                _ = tokio::time::sleep(Duration::from_secs((SETTINGS.general.timeout + 2).into())) => {
                     info!("Will delay interval has passed");
-                    if let Some(will) = self.will.clone() {
-                        let send_packet = PublishPacket::from(will);
-                        self.handle_publish_packet(&mut stream, &addr, &send_packet).await?;
+                    self.publish_will(&mut stream, &addr).await?;
+                }
+                _ = tokio::time::sleep(Duration::from_secs(1)), if !self.outgoing_messages.is_empty() => {
+                    for packet in self.outgoing_messages.iter_mut() {
+                        packet.counter.0 -= 1;
+                        if packet.counter.0 == 0 {
+                            info!("Message has expired");
+                            continue;
+                        }
+                        let send_packet = Packet::Publish(packet.packet.clone());
+                        Self::write_to_stream(&mut stream, &send_packet).await?;
                     }
+                    self.outgoing_messages.retain(|packet| packet.counter.0 != 0);
                 }
             }
         }
@@ -154,7 +188,7 @@ impl Client {
         peer: &SocketAddr,
         packet: &PublishPacket,
     ) -> Result {
-        // TODO: process payload
+        // TODO: process payload?
         info!(
             "{:?} published {:?} to {:?}",
             peer, packet.payload, packet.topic
@@ -167,14 +201,26 @@ impl Client {
             }
             Err(ref e) => info!("Could not send message to topic because of `{0}`", e),
         };
-        if packet.qos != QoS::AtMostOnce {
-            let puback = Packet::PublishAck(PublishAckPacket {
-                packet_id: packet.packet_id.unwrap(),
-                reason_code: reason_code,
-                reason_string: None,
-                user_properties: vec![],
-            });
-            return Self::write_to_stream(stream, &puback).await;
+
+        info!("Send message to redis");
+
+        self.redis_sender
+            .send(packet.clone())
+            .await
+            .expect("Could not send message to redis");
+
+        match packet.qos {
+            QoS::AtMostOnce => {}
+            QoS::AtLeastOnce => {
+                let puback = Packet::PublishAck(PublishAckPacket {
+                    packet_id: packet.packet_id.unwrap(),
+                    reason_code,
+                    reason_string: None,
+                    user_properties: vec![],
+                });
+                Self::write_to_stream(stream, &puback).await?;
+            }
+            QoS::ExactlyOnce => {}
         }
         #[cfg(feature = "bq_logging")]
         log_in_bq(
@@ -182,6 +228,13 @@ impl Client {
             str::from_utf8(&packet.payload).unwrap().to_string(),
         )
         .await;
+        Ok(())
+    }
+
+    fn handle_publishack_packet(&mut self, packet: &PublishAckPacket) -> Result {
+        self.outgoing_messages
+            .retain(|p| p.packet.packet_id != Some(packet.packet_id));
+
         Ok(())
     }
 
@@ -195,7 +248,6 @@ impl Client {
     ) -> Result {
         info!("{:?} subscribed to {:?}", peer, packet.subscription_topics);
 
-        // TODO: tell client following features are not supported: SharedSubscriptions,
         // WildcardSubscriptions
         let mut sub_ack_packet = SubscribeAckPacket {
             packet_id: packet.packet_id,
@@ -251,7 +303,7 @@ impl Client {
         let mut buf = BytesMut::new();
         encode_mqtt(packet, &mut buf, ProtocolVersion::V500);
         match stream.write_all(&buf).await {
-            Ok(e) => {
+            Ok(_) => {
                 info!("Written bytes");
                 Ok(())
             }
@@ -265,7 +317,7 @@ impl Client {
     async fn handle_packet(
         &mut self,
         stream: &mut impl MCStream,
-        packet: &mut [u8; 265],
+        packet: &mut [u8; 1024],
         peer: &SocketAddr,
     ) -> Result {
         let packet = decode_mqtt(
@@ -275,12 +327,13 @@ impl Client {
         .unwrap();
         info!("Received packet: {:?}", packet);
         match packet {
-            Some(Packet::Connect(p)) => self.handle_connect_packet(stream, &peer, &p).await,
+            Some(Packet::Connect(p)) => self.handle_connect_packet(stream, peer, &p).await,
             Some(Packet::PingRequest) => Self::handle_pingreq_packet(stream).await,
-            Some(Packet::Publish(p)) => self.handle_publish_packet(stream, &peer, &p).await,
-            Some(Packet::Subscribe(p)) => self.handle_subscribe_packet(stream, &peer, &p).await,
-            Some(Packet::Disconnect(p)) => self.handle_disconnect_packet(stream, &peer, &p).await,
-            Some(Packet::Unsubscribe(p)) => self.handle_unsubscribe_packet(stream, &peer, &p).await,
+            Some(Packet::Publish(p)) => self.handle_publish_packet(stream, peer, &p).await,
+            Some(Packet::Subscribe(p)) => self.handle_subscribe_packet(stream, peer, &p).await,
+            Some(Packet::Disconnect(p)) => self.handle_disconnect_packet(stream, peer, &p).await,
+            Some(Packet::Unsubscribe(p)) => self.handle_unsubscribe_packet(stream, peer, &p).await,
+            Some(Packet::PublishAck(p)) => self.handle_publishack_packet(&p),
             _ => {
                 info!("No known packet-type");
                 Err(MCloudError::UnknownPacketType)
@@ -311,10 +364,9 @@ impl Client {
             session_expiry_interval: None,
             receive_maximum: None,
             // temp qos on 1
-            maximum_qos: Some(MaximumQos(QoS::AtMostOnce)),
+            maximum_qos: Some(MaximumQos(QoS::AtLeastOnce)),
             retain_available: None,
-            // TODO: increase buffer size
-            maximum_packet_size: Some(MaximumPacketSize(256)),
+            maximum_packet_size: Some(MaximumPacketSize(1024)),
             // TODO: assign unique client_identifier
             assigned_client_identifier: None,
             topic_alias_maximum: None,
@@ -323,7 +375,7 @@ impl Client {
             wildcard_subscription_available: None,
             subscription_identifiers_available: None,
             shared_subscription_available: None,
-            server_keep_alive: Some(ServerKeepAlive(10)),
+            server_keep_alive: Some(ServerKeepAlive(SETTINGS.general.timeout)),
             response_information: None,
             server_reference: None,
             authentication_method: None,
@@ -343,16 +395,24 @@ impl Client {
     ) -> Result {
         let reason = packet.reason_code;
         info!("{:?} disconnect with reason-code: {:?}", peer, reason);
-
         if reason == DisconnectReason::DisconnectWithWillMessage {
-            // TODO: Make a publish_will function
-            let will_packet = PublishPacket::from(self.will.clone().unwrap());
-            self.handle_publish_packet(stream, peer, &will_packet)
-                .await?;
-            debug!("Will message {:?} sent", will_packet);
+            self.publish_will(stream, peer).await?;
         }
-
         Err(MCloudError::ClientDisconnected((&peer).to_string()))
+    }
+
+    /// Publish the stored will message
+    #[tracing::instrument]
+    #[async_backtrace::framed]
+    async fn publish_will(&mut self, stream: &mut impl MCStream, peer: &SocketAddr) -> Result {
+        if self.will.is_none() {
+            return Ok(());
+        }
+        let will_packet = PublishPacket::from(self.will.clone().unwrap());
+        self.handle_publish_packet(stream, peer, &will_packet)
+            .await?;
+        debug!("Will message {:?} sent", will_packet);
+        Ok(())
     }
 
     #[tracing::instrument]
@@ -418,7 +478,8 @@ mod tests {
 
     fn generate_client(topics: Arc<Mutex<Topics>>) -> Client {
         let (tx, _) = channel(1024);
-        Client::new(tx, topics)
+        let (redis_sender, _) = channel::<PublishPacket>(1024);
+        Client::new(tx, topics, redis_sender)
     }
 
     fn get_packet(packet: &Packet) -> BytesMut {
@@ -502,7 +563,10 @@ mod tests {
                 .get_mut("test")
                 .unwrap()
                 .sender
-                .send(Message::Unsubscribe("Hello".to_string())),
+                .send(Message::Publish(PublishPacket::new(
+                    Topic::from_str("test").unwrap(),
+                    Bytes::new()
+                ))),
             Err(tokio::sync::broadcast::error::SendError(_))
         ));
     }
@@ -540,8 +604,10 @@ mod tests {
         writer.write_all(&publish_packet).await.unwrap();
         writer.flush().await.unwrap();
         sleep(Duration::from_millis(100)).await;
+
         // Receiver should have one message
         assert_eq!(1, receiver.len());
+
         // Receiver should have the message "test"
         let msg = receiver.recv().await.unwrap();
         match msg {
