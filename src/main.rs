@@ -46,9 +46,7 @@ lazy_static! {
 
 #[tokio::main]
 async fn main() -> Result {
-    // Set up tracing_tree
-    // write a tracing subscriber for the whole project which outputs to stdout
-
+    // Set up tracing
     #[cfg(feature = "docker")]
     let _subscriber = tracing_subscriber::fmt::Subscriber::builder()
         .with_ansi(true)
