@@ -3,7 +3,6 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use mosquitto_rs::{Client, QoS};
 use std::env;
-use std::path::Path;
 
 const HOST: &str = "localhost";
 

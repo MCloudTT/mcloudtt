@@ -137,7 +137,7 @@ impl Client {
                         Ok(Message::Publish(packet)) => {
                             info!("Subscriber received new message");
 
-                            if &packet.qos == &QoS::AtLeastOnce {
+                            if packet.qos == QoS::AtLeastOnce {
                                 let outgoing_packet = OutgoingMessage {
                                     packet: packet.clone(),
                                     counter: packet.message_expiry_interval.clone().unwrap_or(MessageExpiryInterval(1)),
@@ -303,7 +303,7 @@ impl Client {
         let mut buf = BytesMut::new();
         encode_mqtt(packet, &mut buf, ProtocolVersion::V500);
         match stream.write_all(&buf).await {
-            Ok(e) => {
+            Ok(_) => {
                 info!("Written bytes");
                 Ok(())
             }
@@ -327,12 +327,12 @@ impl Client {
         .unwrap();
         info!("Received packet: {:?}", packet);
         match packet {
-            Some(Packet::Connect(p)) => self.handle_connect_packet(stream, &peer, &p).await,
+            Some(Packet::Connect(p)) => self.handle_connect_packet(stream, peer, &p).await,
             Some(Packet::PingRequest) => Self::handle_pingreq_packet(stream).await,
-            Some(Packet::Publish(p)) => self.handle_publish_packet(stream, &peer, &p).await,
-            Some(Packet::Subscribe(p)) => self.handle_subscribe_packet(stream, &peer, &p).await,
-            Some(Packet::Disconnect(p)) => self.handle_disconnect_packet(stream, &peer, &p).await,
-            Some(Packet::Unsubscribe(p)) => self.handle_unsubscribe_packet(stream, &peer, &p).await,
+            Some(Packet::Publish(p)) => self.handle_publish_packet(stream, peer, &p).await,
+            Some(Packet::Subscribe(p)) => self.handle_subscribe_packet(stream, peer, &p).await,
+            Some(Packet::Disconnect(p)) => self.handle_disconnect_packet(stream, peer, &p).await,
+            Some(Packet::Unsubscribe(p)) => self.handle_unsubscribe_packet(stream, peer, &p).await,
             Some(Packet::PublishAck(p)) => self.handle_publishack_packet(&p),
             _ => {
                 info!("No known packet-type");

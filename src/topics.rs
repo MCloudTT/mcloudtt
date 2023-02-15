@@ -58,8 +58,6 @@ pub(crate) fn send_message(sender: &mut Sender<Message>, message: Message) -> Re
 #[derive(Clone, Debug, PartialEq)]
 pub enum Message {
     Publish(PublishPacket),
-    Subscribe(String),
-    Unsubscribe(String),
 }
 #[derive(Debug)]
 pub struct Channel {

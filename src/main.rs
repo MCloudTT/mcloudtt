@@ -61,9 +61,12 @@ async fn main() -> Result {
 async fn main_loop() -> Result {
     let settings = &SETTINGS;
 
+    #[cfg(not(feature = "secure"))]
+    println!("WARNING: Running without TLS enabled! Only use this in a private network as the traffic is not encrypted and authentication is disabled!");
+
     let topics = Arc::new(Mutex::new(Topics::default()));
 
-    let (redis_sender, redis_receiver) = tokio::sync::mpsc::channel::<PublishPacket>(200);
+    let (redis_sender, _) = tokio::sync::mpsc::channel::<PublishPacket>(200);
 
     // Start redis client
     #[cfg(feature = "redis")]

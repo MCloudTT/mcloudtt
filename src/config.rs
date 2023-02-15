@@ -61,7 +61,7 @@ impl Configuration {
 mod tests {
     use super::*;
 
-    const TEST_CONFIG: &'static str = r#"
+    const TEST_CONFIG: &str = r#"
 [general]
 websocket = true
 timeout = 10
