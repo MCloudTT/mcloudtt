@@ -23,7 +23,7 @@ use rustls_pemfile::{certs, rsa_private_keys};
 use tokio::net::{TcpListener, TcpStream};
 
 use tokio_rustls::rustls::{self, Certificate, PrivateKey};
-use tracing::{info, instrument::WithSubscriber};
+use tracing::{info};
 use tracing_subscriber::EnvFilter;
 
 use crate::config::Configuration;
