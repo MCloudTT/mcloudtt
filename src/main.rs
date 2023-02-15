@@ -23,7 +23,7 @@ use rustls_pemfile::{certs, rsa_private_keys};
 use tokio::net::{TcpListener, TcpStream};
 
 use tokio_rustls::rustls::{self, Certificate, PrivateKey};
-use tracing::{info};
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 use crate::config::Configuration;
@@ -46,7 +46,7 @@ lazy_static! {
 
 #[tokio::main]
 async fn main() -> Result {
-    // Set up tracing
+    // Set up tracing_tree
 
     Registry::default()
         .with(EnvFilter::from_default_env())
