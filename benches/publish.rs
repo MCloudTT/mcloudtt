@@ -1,60 +1,51 @@
-use criterion::async_executor::AsyncExecutor;
 use criterion::async_executor::FuturesExecutor;
-use criterion::{black_box, criterion_group, criterion_main, AsyncBencher, Criterion};
-use lazy_static::lazy_static;
-use paho_mqtt as mqtt;
-use paho_mqtt::AsyncClient;
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+
+use mosquitto_rs::{Client, QoS};
 use std::env;
+use std::path::Path;
 
 const HOST: &str = "localhost";
 
-// Load config
-lazy_static! {
-    static ref CLIENT: AsyncClient = mqtt::CreateOptionsBuilder::new()
-        .server_uri(HOST)
-        .client_id("demo_client")
-        .max_buffered_messages(100)
-        .create_client()
+async fn try_publish(msg: &str) {
+    const CA_CRT: &str = "certs/ca.crt";
+    const CLIENT_KEY: &str = "certs/client/client.key";
+    assert!(env::current_dir().unwrap().join(CA_CRT).exists());
+    assert!(env::current_dir().unwrap().join(CLIENT_KEY).exists());
+    let mut client = Client::with_auto_id().unwrap();
+    client
+        .configure_tls(
+            Some(CA_CRT),
+            None::<&str>,
+            Some(CLIENT_KEY),
+            None::<&str>,
+            None,
+        )
         .unwrap();
+    let rc = client
+        .connect(HOST, 1883, std::time::Duration::from_secs(5), None)
+        .await
+        .unwrap();
+
+    let subscriptions = client.subscriber().unwrap();
+
+    client.subscribe("test/#", QoS::AtMostOnce).await.unwrap();
+    println!("subscribed");
+
+    client
+        .publish("test/this", msg.as_bytes(), QoS::AtMostOnce, false)
+        .await
+        .unwrap();
+    println!("published");
+
+    subscriptions.recv().await.unwrap();
 }
 
-async fn try_publish(msg: mqtt::Message) {
-    CLIENT.publish(msg).await.unwrap();
-}
-
-async fn criterion_benchmark(c: &mut Criterion) {
-    const CA_CRT: &str = "ca.crt";
-    const CLIENT_KEY: &str = "client.key";
-
-    let mut ca_crt = env::current_dir().unwrap();
-    ca_crt.push(CA_CRT);
-
-    let mut client_key = env::current_dir().unwrap();
-    client_key.push(CLIENT_KEY);
-
-    let ssl_opts = mqtt::SslOptionsBuilder::new()
-        .trust_store(ca_crt)
-        .unwrap()
-        .private_key(client_key)
-        .unwrap()
-        .verify(false)
-        .enable_server_cert_auth(false)
-        .disable_default_trust_store(true)
-        .finalize();
-
-    let conn_opts = mqtt::ConnectOptionsBuilder::new_v5()
-        .ssl_options(ssl_opts)
-        .finalize();
-
-    CLIENT.connect(conn_opts).await.unwrap();
-    let data = mqtt::MessageBuilder::new()
-        .topic("Thisisatesttopic")
-        .payload("Oh hi Mark")
-        .qos(0)
-        .finalize();
+fn criterion_benchmark(c: &mut Criterion) {
+    let payload = "Oh hi Mark";
     c.bench_function("fib 20", |b| {
         b.to_async(FuturesExecutor)
-            .iter(|| try_publish(black_box(data.clone())))
+            .iter(|| try_publish(black_box(payload)))
     });
 }
 

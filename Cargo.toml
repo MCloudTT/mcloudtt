@@ -29,13 +29,14 @@ rand = { version = "0.8.5", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.4.0", features = ["async_futures"]}
-paho-mqtt = "0.12.0"
+mosquitto-rs = { git= "https://github.com/Nereuxofficial/mosquitto-rs" }
 [[bench]]
 name = "publish"
 harness = false
 
 [features]
-default = []
+default = ["secure"]
+secure = []
 docker = []
 bq_logging = ["dep:chrono", "dep:gcp-bigquery-client"]
 redis = ["dep:redis", "dep:rand", "dep:serde_json"]
