@@ -563,7 +563,10 @@ mod tests {
                 .get_mut("test")
                 .unwrap()
                 .sender
-                .send(Message::Unsubscribe("Hello".to_string())),
+                .send(Message::Publish(PublishPacket::new(
+                    Topic::from_str("test").unwrap(),
+                    Bytes::new()
+                ))),
             Err(tokio::sync::broadcast::error::SendError(_))
         ));
     }
