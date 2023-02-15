@@ -19,7 +19,10 @@ spec:
       - image: gcr.io/azubi-knowhow-building/mcloudtt
         name: mcloudtt
         imagePullPolicy: Always
-        resources: {}
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "1.0"
         ports:
           - containerPort: 1883
 status: {}
