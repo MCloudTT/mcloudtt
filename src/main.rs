@@ -66,7 +66,8 @@ async fn main_loop() -> Result {
 
     let topics = Arc::new(Mutex::new(Topics::default()));
 
-    let (redis_sender, _) = tokio::sync::mpsc::channel::<PublishPacket>(200);
+    #[allow(unused_variables)]
+    let (redis_sender, redis_receiver) = tokio::sync::mpsc::channel::<PublishPacket>(200);
 
     // Start redis client
     #[cfg(feature = "redis")]
