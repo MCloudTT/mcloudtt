@@ -163,9 +163,7 @@ async fn handle_new_connection(
         }
     }
     #[cfg(not(feature = "secure"))]
-    {
-        tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
-    }
+    tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
 }
 
 fn load_certs(path: &Path) -> io::Result<Vec<Certificate>> {
