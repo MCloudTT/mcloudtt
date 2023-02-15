@@ -16,17 +16,39 @@ spec:
         app: mcloudtt
     spec:
       containers:
-      - image: gcr.io/azubi-knowhow-building/mcloudtt
+      - image: mcloudtt:latest
         name: mcloudtt
-        imagePullPolicy: Always
+        imagePullPolicy: Never
         resources: {}
         ports:
           - containerPort: 1883
-      - image: redis:latest
-        name: redis
-        imagePullPolicy: Always
-        resources: {}
 status: {}
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:latest
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        ports:
+        - containerPort: 6379
 
 ---
 
@@ -38,8 +60,26 @@ metadata:
     run: mcloudtt
 spec:
   ports:
-  - port: 1883
+  - name: mqtt
+    port: 1883
     protocol: TCP
   selector:
     app: mcloudtt
+  type: LoadBalancer
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    run: redis
+spec:
+  ports:
+  - name: redis
+    port: 6379
+    protocol: TCP
+  selector:
+    app: redis
   type: LoadBalancer
