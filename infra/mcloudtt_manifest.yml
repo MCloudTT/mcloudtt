@@ -16,9 +16,9 @@ spec:
         app: mcloudtt
     spec:
       containers:
-      - image: mcloudtt:latest
+      - image: gcr.io/azubi-knowhow-building/mcloudtt
         name: mcloudtt
-        imagePullPolicy: Never
+        imagePullPolicy: Always
         resources: {}
         ports:
           - containerPort: 1883
