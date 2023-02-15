@@ -61,8 +61,10 @@ impl Configuration {
 mod tests {
     use super::*;
 
-    const TEST_CONFIG: &'static str = r#"[general]
+    const TEST_CONFIG: &'static str = r#"
+[general]
 websocket = true
+timeout = 10
 
 [tls]
 certfile = "certs/broker/broker.crt"
