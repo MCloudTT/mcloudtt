@@ -116,4 +116,24 @@ credentials_path = "sa.key""#;
         assert_eq!(config.bigquery.dataset_id, "mcloudttbq");
         assert_eq!(config.bigquery.table_id, "topic-log");
     }
+    #[cfg(feature = "redis")]
+    #[test]
+    fn test_redis() {
+        let config = TEST_CONFIG.to_owned()
+            + r#"
+[redis]
+host = "redis"
+port = 6379"#;
+        let config: Configuration = Config::builder()
+            .add_source(config::File::from_str(
+                config.as_str(),
+                config::FileFormat::Toml,
+            ))
+            .build()
+            .unwrap()
+            .try_deserialize()
+            .unwrap();
+        assert_eq!(config.redis.host, "redis");
+        assert_eq!(config.redis.port, 6379);
+    }
 }
