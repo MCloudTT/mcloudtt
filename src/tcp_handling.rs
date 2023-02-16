@@ -16,6 +16,8 @@ use mqtt_v5::types::{
     SubscribeAckReason, SubscribePacket, UnsubscribeAckPacket, UnsubscribeAckReason,
     UnsubscribePacket,
 };
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
@@ -42,6 +44,7 @@ pub struct Client {
     pub will: Option<FinalWill>,
     outgoing_messages: Vec<OutgoingMessage>,
     redis_sender: tokio::sync::mpsc::Sender<PublishPacket>,
+    id: String,
 }
 
 pub trait MCStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
@@ -92,6 +95,11 @@ impl Client {
             will: None,
             outgoing_messages: Vec::new(),
             redis_sender,
+            id: thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(8)
+                .map(char::from)
+                .collect(),
         }
     }
 
