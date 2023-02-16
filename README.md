@@ -17,7 +17,7 @@ docker build -t mcloudtt .
 ## Feature flags
 - `bq_logging` - enables logging to BigQuery. Requires the file `sa.key` to be present in the current directory.
 - `docker` - enables the `docker` feature, which is as of now sets the right IP Address for the broker to listen on.
-- `redis` - enable communication with a redis server. Needed for message exchange between brokers.
+- `redis` - enables communication with a redis server. Needed for message exchange between brokers.
 
 ### Using mosquitto_sub to listen on a topic
 ```bash
