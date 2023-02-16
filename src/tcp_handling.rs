@@ -625,4 +625,34 @@ mod tests {
             _ => panic!("Wrong message type"),
         }
     }
+
+    #[tokio::test]
+    async fn test_handle_connect_packet() {
+        let topics = Arc::new(Mutex::new(Topics::default()));
+        let mut client = generate_client(topics.clone());
+        let (listener, mut writer) = generate_tcp_stream_with_writer("1340".to_string()).await;
+        let connect = get_packet(&Packet::Connect(ConnectPacket::default()));
+        let (stream, addr) = listener.accept().await.unwrap();
+        tokio::spawn(async move {
+            client.handle_raw_tcp_stream(stream, addr).await.unwrap();
+        });
+        writer.write_all(&connect).await.unwrap();
+        writer.flush().await.unwrap();
+        sleep(Duration::from_millis(20)).await;
+        let mut buf = [0; 1024];
+        writer.try_read(&mut buf).unwrap();
+        assert!(!buf.is_empty());
+        let response_packet =
+            decode_mqtt(&mut BytesMut::from(buf.as_slice()), ProtocolVersion::V500)
+                .unwrap()
+                .unwrap();
+        let connack = if let Packet::ConnectAck(connack) = response_packet {
+            connack
+        } else {
+            panic!("Expected ConnectAck packet");
+        };
+        assert_eq!(connack.reason_code, ConnectReason::Success);
+        assert_ne!(connack.assigned_client_identifier, None);
+        assert_eq!(connack.maximum_qos.unwrap(), MaximumQos(QoS::AtLeastOnce));
+    }
 }
