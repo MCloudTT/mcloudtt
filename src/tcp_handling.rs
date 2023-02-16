@@ -8,7 +8,7 @@ use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
 use mqtt_v5::topic::TopicFilter;
 use mqtt_v5::types::properties::{
-    MaximumPacketSize, MaximumQos, MessageExpiryInterval, ServerKeepAlive,
+    AssignedClientIdentifier, MaximumPacketSize, MaximumQos, MessageExpiryInterval, ServerKeepAlive,
 };
 use mqtt_v5::types::{
     ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, DisconnectReason, FinalWill,
@@ -44,7 +44,7 @@ pub struct Client {
     pub will: Option<FinalWill>,
     outgoing_messages: Vec<OutgoingMessage>,
     redis_sender: tokio::sync::mpsc::Sender<PublishPacket>,
-    id: String,
+    id: AssignedClientIdentifier,
 }
 
 pub trait MCStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
@@ -95,11 +95,13 @@ impl Client {
             will: None,
             outgoing_messages: Vec::new(),
             redis_sender,
-            id: thread_rng()
-                .sample_iter(&Alphanumeric)
-                .take(8)
-                .map(char::from)
-                .collect(),
+            id: AssignedClientIdentifier(
+                thread_rng()
+                    .sample_iter(&Alphanumeric)
+                    .take(16)
+                    .map(char::from)
+                    .collect(),
+            ),
         }
     }
 
@@ -376,7 +378,7 @@ impl Client {
             retain_available: None,
             maximum_packet_size: Some(MaximumPacketSize(1024)),
             // TODO: assign unique client_identifier
-            assigned_client_identifier: None,
+            assigned_client_identifier: Some(self.id.clone()),
             topic_alias_maximum: None,
             reason_string: None,
             user_properties: vec![],
