@@ -21,15 +21,12 @@ docker build -t mcloudtt .
 
 ### Using mosquitto_sub to listen on a topic
 ```bash
-mosquitto_sub -p 1883 -t "test" --cafile certs/ca.crt --cert certs/client/client.crt --key certs/client/client.key -d
---insecure -V 5 -q 0
+mosquitto_sub -p 1883 -t "test" --cafile certs/ca.crt --cert certs/client/client.crt --key certs/client/client.key -d --insecure -V 5 -q 0
 ```
 
 ### Using mosquitto_pub to publish to topic
 ```bash
-mosquitto_pub -p 1883 -t "test" -m "test message" --cafi
-le certs/ca.crt --cert certs/client/client.crt --key certs
-/client/client.key -d --insecure -V 5 -q 0
+mosquitto_pub -p 1883 -t "test" -m "test message" --cafile certs/ca.crt --cert certs/client/client.crt --key certs /client/client.key -d --insecure -V 5 -q 0
 ```
 
 ## Google Cloud
@@ -44,7 +41,6 @@ terraform apply
 ### Deplying to cluster
 ```bash
 gcloud container clusters get-credentials mcloudtt-dev-cluster --region REGION --project PROJECT_ID
-
 kubectl create -f mcloudtt_manifest.yml
 ```
 
