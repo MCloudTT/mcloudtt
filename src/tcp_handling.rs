@@ -612,7 +612,6 @@ mod tests {
         let msg = receiver.recv().await.unwrap();
         match msg {
             Message::Publish(msg) => assert_eq!("test", str::from_utf8(&msg.payload).unwrap()),
-            _ => panic!("Wrong message type"),
         }
     }
 }
