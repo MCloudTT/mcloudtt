@@ -25,7 +25,7 @@ chrono = { version = "0.4.23", optional = true }
 serde = { version = "1.0.130", features = ["derive"] }
 redis = { version = "0.22.3", features = ["bytes"], optional = true }
 serde_json = { version = "1.0", optional = true }
-rand = { version = "0.8.5", optional = true }
+rand = { version = "0.8.5" }
 
 [dev-dependencies]
 criterion = { version = "0.4.0", features = ["async_futures"]}
@@ -42,4 +42,4 @@ default = ["secure"]
 secure = []
 docker = []
 bq_logging = ["dep:chrono", "dep:gcp-bigquery-client"]
-redis = ["dep:redis", "dep:rand", "dep:serde_json"]
+redis = ["dep:redis", "dep:serde_json"]
