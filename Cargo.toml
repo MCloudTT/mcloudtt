@@ -1,9 +1,17 @@
 [package]
 name = "mcloudtt"
-version = "0.1.0"
+version = "0.8.0"
 edition = "2021"
+authors = ["Nereuxofficial <nereux@tuta.io>", "mfloto <git@mfloto.com>"]
+description = "A cloud-native asynchronous MQTT broker written in Rust"
+repository = "https://github.com/MCloudTT/mcloudtt"
+license = "AGPL-3.0-or-later"
+license-file = "LICENSE"
+keywords = ["mqtt", "broker", "cloud", "rust", "kubernetes", "tokio", "rustls"]
+categories = ["network-programming::application"]
+readme = "README.md"
+rust-version = "1.64"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 thiserror = "1.0"
