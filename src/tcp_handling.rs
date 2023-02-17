@@ -8,7 +8,7 @@ use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
 use mqtt_v5::topic::TopicFilter;
 use mqtt_v5::types::properties::{
-    MaximumPacketSize, MaximumQos, MessageExpiryInterval, ServerKeepAlive,
+    AssignedClientIdentifier, MaximumPacketSize, MaximumQos, MessageExpiryInterval, ServerKeepAlive,
 };
 use mqtt_v5::types::{
     ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, DisconnectReason, FinalWill,
@@ -16,6 +16,8 @@ use mqtt_v5::types::{
     SubscribeAckReason, SubscribePacket, UnsubscribeAckPacket, UnsubscribeAckReason,
     UnsubscribePacket,
 };
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use std::task::{Context, Poll};
 use std::{
     borrow::Cow, collections::BTreeMap, fmt::Debug, future::Future, marker::Unpin, net::SocketAddr,
@@ -37,6 +39,7 @@ pub struct Client {
     pub will: Option<FinalWill>,
     outgoing_messages: Vec<OutgoingMessage>,
     redis_sender: tokio::sync::mpsc::Sender<PublishPacket>,
+    id: AssignedClientIdentifier,
 }
 
 pub trait MCStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
@@ -87,6 +90,13 @@ impl Client {
             will: None,
             outgoing_messages: Vec::new(),
             redis_sender,
+            id: AssignedClientIdentifier(
+                thread_rng()
+                    .sample_iter(&Alphanumeric)
+                    .take(16)
+                    .map(char::from)
+                    .collect(),
+            ),
         }
     }
 
@@ -365,7 +375,7 @@ impl Client {
             retain_available: None,
             maximum_packet_size: Some(MaximumPacketSize(1024)),
             // TODO: assign unique client_identifier
-            assigned_client_identifier: None,
+            assigned_client_identifier: Some(self.id.clone()),
             topic_alias_maximum: None,
             reason_string: None,
             user_properties: vec![],
@@ -610,5 +620,35 @@ mod tests {
         match msg {
             Message::Publish(msg) => assert_eq!("test", str::from_utf8(&msg.payload).unwrap()),
         }
+    }
+
+    #[tokio::test]
+    async fn test_handle_connect_packet() {
+        let topics = Arc::new(Mutex::new(Topics::default()));
+        let mut client = generate_client(topics.clone());
+        let (listener, mut writer) = generate_tcp_stream_with_writer("1340".to_string()).await;
+        let connect = get_packet(&Packet::Connect(ConnectPacket::default()));
+        let (stream, addr) = listener.accept().await.unwrap();
+        tokio::spawn(async move {
+            client.handle_raw_tcp_stream(stream, addr).await.unwrap();
+        });
+        writer.write_all(&connect).await.unwrap();
+        writer.flush().await.unwrap();
+        sleep(Duration::from_millis(20)).await;
+        let mut buf = [0; 1024];
+        writer.try_read(&mut buf).unwrap();
+        assert!(!buf.is_empty());
+        let response_packet =
+            decode_mqtt(&mut BytesMut::from(buf.as_slice()), ProtocolVersion::V500)
+                .unwrap()
+                .unwrap();
+        let connack = if let Packet::ConnectAck(connack) = response_packet {
+            connack
+        } else {
+            panic!("Expected ConnectAck packet");
+        };
+        assert_eq!(connack.reason_code, ConnectReason::Success);
+        assert_ne!(connack.assigned_client_identifier, None);
+        assert_eq!(connack.maximum_qos.unwrap(), MaximumQos(QoS::AtLeastOnce));
     }
 }
