@@ -512,7 +512,7 @@ mod tests {
         writer.write_all(&subscription_packet).await.unwrap();
         writer.flush().await.unwrap();
         sleep(Duration::from_millis(100)).await;
-        assert_eq!(1, topics.lock().unwrap().0.len());
+        assert_eq!(1, topics.lock().await.0.len());
     }
 
     #[tokio::test]
@@ -542,7 +542,7 @@ mod tests {
         writer.write_all(&subscription_packet).await.unwrap();
         writer.flush().await.unwrap();
         sleep(Duration::from_millis(20)).await;
-        assert_eq!(1, topics.lock().unwrap().0.len());
+        assert_eq!(1, topics.lock().await.0.len());
         let unsubscribe_packet = get_packet(&Packet::Unsubscribe(UnsubscribePacket::new(vec![
             TopicFilter::Concrete {
                 filter: "test".to_string(),
@@ -555,7 +555,7 @@ mod tests {
         assert!(matches!(
             topics
                 .lock()
-                .unwrap()
+                .await
                 .0
                 .get_mut("test")
                 .unwrap()
@@ -573,7 +573,7 @@ mod tests {
         let topics = Arc::new(Mutex::new(Topics::default()));
         let mut receiver = topics
             .lock()
-            .unwrap()
+            .await
             .subscribe(Cow::Owned("test".to_string()))
             .unwrap();
         let mut client = generate_client(topics.clone());
