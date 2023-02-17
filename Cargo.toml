@@ -10,7 +10,7 @@ license-file = "LICENSE"
 keywords = ["mqtt", "broker", "cloud", "rust", "kubernetes", "tokio", "rustls"]
 categories = ["network-programming::application"]
 readme = "README.md"
-rust-version = "1.62"
+rust-version = "1.64"
 
 
 [dependencies]
