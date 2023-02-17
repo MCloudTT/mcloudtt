@@ -1,6 +1,6 @@
 # MCloudTT
 
-A cloud-native asynchronous MQTT Broker written in Rust.
+A cloud-native asynchronous MQTT V5 Broker written in Rust.
 
 ## Getting started
 Run `gen-keys.sh` to generate required keys and certificates in the certs folder.
