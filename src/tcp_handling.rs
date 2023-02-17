@@ -16,17 +16,19 @@ use mqtt_v5::types::{
     SubscribeAckReason, SubscribePacket, UnsubscribeAckPacket, UnsubscribeAckReason,
     UnsubscribePacket,
 };
-use std::borrow::Cow;
-use std::collections::BTreeMap;
-use std::fmt::Debug;
-use std::future::Future;
-use std::marker::Unpin;
-use std::net::SocketAddr;
-use std::pin::Pin;
-use std::str;
-use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::{
+    borrow::Cow,
+    collections::BTreeMap,
+    fmt::Debug,
+    future::Future,
+    marker::Unpin,
+    net::SocketAddr,
+    pin::Pin,
+    str,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
@@ -264,17 +266,19 @@ impl Client {
                     filter: f,
                     level_count: _,
                 } => {
-                    sub_ack_packet
-                        .reason_codes
-                        .push(SubscribeAckReason::GrantedQoSZero);
-                    self.receivers.insert(
-                        f.clone(),
-                        self.topics
-                            .lock()
-                            .unwrap()
-                            .subscribe(Cow::Owned(f.clone()))
-                            .unwrap(),
-                    );
+                    {
+                        let mut topic_lock = self.topics.lock().unwrap();
+                        sub_ack_packet
+                            .reason_codes
+                            .push(SubscribeAckReason::GrantedQoSZero);
+                        self.receivers
+                            .insert(f.clone(), topic_lock.subscribe(Cow::Owned(f.clone()))?);
+                        // If we have a retained message, send it to the client
+                        if let Some(retained_message) = topic_lock.get_retained_message(&f) {
+                            let send_packet = Packet::Publish(retained_message.clone());
+                            Self::write_to_stream(stream, &send_packet).await?;
+                        }
+                    }
                     info!("Client {:?} subscribed to {:?}", peer, &f);
                 }
                 TopicFilter::Wildcard {
