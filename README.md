@@ -1,6 +1,27 @@
 # MCloudTT
 
-A cloud-native asynchronous MQTT Broker written in Rust.
+
+[![GitHub tag](https://img.shields.io/github/tag/MCloudTT/mcloudtt?include_prereleases=&sort=semver&color=blue&style=flat-square)](https://github.com/MCloudTT/mcloudtt/releases/)
+[![License](https://img.shields.io/badge/License-AGPLv3-blue?style=flat-square)](#license)
+[![issues - mcloudtt](https://img.shields.io/github/issues/MCloudTT/mcloudtt?style=flat-square)](https://github.com/MCloudTT/mcloudtt/issues)
+![Commits/m](https://img.shields.io/github/commit-activity/m/McloudTT/mcloudtt?style=flat-square)
+
+
+<div align="center">
+
+
+
+
+
+</div>
+
+## Documentation
+
+<div align="center">
+
+[![view - Documentation](https://img.shields.io/badge/view-Documentation-blue?style=for-the-badge)](/docs/ "Go to project documentation")
+
+</div>
 
 ## Getting started
 Run `gen-keys.sh` to generate required keys and certificates in the certs folder.
