@@ -3,7 +3,8 @@
 #![feature(c_variadic)]
 #![feature(const_mut_refs)]
 #![feature(type_alias_impl_trait)]
-
+//! This example demonstrates using the ESP32C3 to send an MQTT message to a broker, when a motion
+//! sensor is triggered.(In this case a HC-SR501 PIR sensor)
 use embassy_executor::_export::StaticCell;
 use embassy_net::tcp::TcpSocket;
 use embassy_net::{Config, Ipv4Address, Stack, StackResources};
@@ -22,10 +23,17 @@ use hal::Rng;
 use hal::{embassy, peripherals::Peripherals, prelude::*, timer::TimerGroup, Rtc};
 
 use embedded_io::asynch::Write;
+use esp32c3_hal::gpio::{
+    Bank0GpioRegisterAccess, Gpio10Signals, GpioPin, Input, InputOutputPinType, PullDown,
+    SingleCoreInteruptStatusRegisterAccessBank0,
+};
+use esp32c3_hal::IO;
 use riscv_rt::entry;
 
+use hal::systimer::SystemTimer;
+
 const CONNECT_PACKET: &[u8] = b"\x10\x0e\0\0\x05\0\0\0\0\0\x05esp32";
-const PUBLISH_PACKET: &[u8] = b"0\x15\0\x08esp32-c3\0Hi from esp32-c3!";
+const PUBLISH_PACKET: &[u8] = b"0\"\0\x08esp32-c3\0Motion sensor triggered";
 const PING_REQ: &[u8] = b"\xc0\0";
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
@@ -59,7 +67,6 @@ fn main() -> ! {
 
     rtc.rwdt.disable();
 
-    use hal::systimer::SystemTimer;
     let syst = SystemTimer::new(peripherals.SYSTIMER);
     initialize(syst.alarm0, Rng::new(peripherals.RNG), &clocks).unwrap();
 
@@ -80,11 +87,13 @@ fn main() -> ! {
         seed
     ));
 
+    let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
+    let inputpin = io.pins.gpio10.into_pull_down_input();
     let executor = EXECUTOR.init(Executor::new());
     executor.run(|spawner| {
         spawner.spawn(connection(controller)).ok();
         spawner.spawn(net_task(&stack)).ok();
-        spawner.spawn(task(&stack)).ok();
+        spawner.spawn(task(&stack, inputpin)).ok();
     });
 }
 
@@ -130,7 +139,17 @@ async fn net_task(stack: &'static Stack<WifiDevice>) {
 }
 
 #[embassy_executor::task]
-async fn task(stack: &'static Stack<WifiDevice>) {
+async fn task(
+    stack: &'static Stack<WifiDevice>,
+    inputpin: GpioPin<
+        Input<PullDown>,
+        Bank0GpioRegisterAccess,
+        SingleCoreInteruptStatusRegisterAccessBank0,
+        InputOutputPinType,
+        Gpio10Signals,
+        10,
+    >,
+) {
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 
@@ -157,16 +176,24 @@ async fn task(stack: &'static Stack<WifiDevice>) {
 
         socket.set_timeout(Some(embassy_net::SmolDuration::from_secs(10)));
 
-        let remote_endpoint = (Ipv4Address::new(34, 66, 45, 21), 1883);
-        println!("connecting...");
-        let r = socket.connect(remote_endpoint).await;
-        if let Err(e) = r {
-            println!("connect error: {:?}", e);
-            continue;
-        }
-        println!("connected!");
-        let mut buf = [0; 1024];
         loop {
+            println!("Polling motion sensor...");
+            loop {
+                Timer::after(Duration::from_millis(100)).await;
+                println!("Sensor is: {:?}", inputpin.is_high().unwrap());
+                if inputpin.is_high().unwrap() {
+                    break;
+                }
+            }
+            let remote_endpoint = (Ipv4Address::new(34, 66, 45, 21), 1883);
+            println!("connecting...");
+            let r = socket.connect(remote_endpoint).await;
+            if let Err(e) = r {
+                println!("connect error: {:?}", e);
+                continue;
+            }
+            println!("connected!");
+            let mut buf = [0; 1024];
             println!("Sending Connect packet");
             let r = socket.write_all(CONNECT_PACKET).await;
             if let Err(e) = r {
@@ -188,7 +215,9 @@ async fn task(stack: &'static Stack<WifiDevice>) {
             Timer::after(Duration::from_millis(1000)).await;
             println!("Sending Publish packet");
             let r = socket.write_all(PUBLISH_PACKET).await;
+            println!("Published, waiting...");
+            Timer::after(Duration::from_secs(30)).await;
         }
-        Timer::after(Duration::from_millis(3000)).await;
+        Timer::after(Duration::from_secs(120)).await;
     }
 }
