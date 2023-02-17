@@ -58,7 +58,7 @@ impl RedisClient {
                 }
                 Some(redis_message) = sub_thread_receiver.recv() => {
                     info!("Message received from redis and publish to mqtt broker");
-                    self.handle_message(redis_message);
+                    self.handle_message(redis_message).await;
                 }
             }
         }
