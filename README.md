@@ -51,6 +51,7 @@ credentials_path = "sa.key"
 [redis]
 host = "redis"
 port = 6379
+```
 
 ## Example Usage
 
