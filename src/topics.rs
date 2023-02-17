@@ -35,14 +35,15 @@ impl Topics {
     pub(crate) fn publish(&mut self, packet: PublishPacket) -> Result {
         let topic_name = packet.topic.topic_name().to_string();
         if let Some(channel) = self.0.get_mut(&topic_name) {
-            send_message(&mut channel.sender, Message::Publish(packet.clone()))?;
+            let _ = send_message(&mut channel.sender, Message::Publish(packet.clone()));
         } else {
             info!("Topic {:?} does not exist... Creating it", topic_name);
             let _ = self.add(Cow::Owned(topic_name.clone()))?;
             let channel = self.0.get_mut(&topic_name).unwrap();
-            send_message(&mut channel.sender, Message::Publish(packet.clone()))?;
+            let _ = send_message(&mut channel.sender, Message::Publish(packet.clone()));
         }
         if packet.retain {
+            info!("Retaining message for topic {:?}", &topic_name);
             self.0.get_mut(&topic_name).unwrap().retained_message = Some(packet);
         }
         Ok(())
