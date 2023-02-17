@@ -15,8 +15,10 @@ use std::{
     io::{self, BufReader},
     net::SocketAddr,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
+
+use tokio::sync::Mutex;
 
 use mqtt_v5::types::PublishPacket;
 use rustls_pemfile::{certs, rsa_private_keys};

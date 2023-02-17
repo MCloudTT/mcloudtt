@@ -18,21 +18,14 @@ use mqtt_v5::types::{
 };
 use std::task::{Context, Poll};
 use std::{
-    borrow::Cow,
-    collections::BTreeMap,
-    fmt::Debug,
-    future::Future,
-    marker::Unpin,
-    net::SocketAddr,
-    pin::Pin,
-    str,
-    sync::{Arc, Mutex},
-    time::Duration,
+    borrow::Cow, collections::BTreeMap, fmt::Debug, future::Future, marker::Unpin, net::SocketAddr,
+    pin::Pin, str, sync::Arc, time::Duration,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::Mutex;
 use tokio_rustls::server::TlsStream;
 use tracing::{debug, info};
 
@@ -196,7 +189,7 @@ impl Client {
             peer, packet.payload, packet.topic
         );
         let mut reason_code = mqtt_v5::types::PublishAckReason::UnspecifiedError;
-        match self.topics.lock().unwrap().publish(packet.clone()) {
+        match self.topics.lock().await.publish(packet.clone()) {
             Ok(_) => {
                 reason_code = mqtt_v5::types::PublishAckReason::Success;
                 info!("Send message to topic")
@@ -267,7 +260,7 @@ impl Client {
                     level_count: _,
                 } => {
                     {
-                        let mut topic_lock = self.topics.lock().unwrap();
+                        let mut topic_lock = self.topics.lock().await;
                         sub_ack_packet
                             .reason_codes
                             .push(SubscribeAckReason::GrantedQoSZero);
@@ -275,8 +268,8 @@ impl Client {
                             .insert(f.clone(), topic_lock.subscribe(Cow::Owned(f.clone()))?);
                         // If we have a retained message, send it to the client
                         if let Some(retained_message) = topic_lock.get_retained_message(&f) {
-                            let send_packet = Packet::Publish(retained_message.clone());
-                            Self::write_to_stream(stream, &send_packet).await?;
+                            let send_packet = &Packet::Publish(retained_message);
+                            Self::write_to_stream(stream, send_packet).await?;
                         }
                     }
                     info!("Client {:?} subscribed to {:?}", peer, &f);
