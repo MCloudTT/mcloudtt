@@ -1,6 +1,6 @@
 [general]
 websocket = true
-timeout = 10
+timeout = 30
 
 [tls]
 certfile = "certs/broker/broker.crt"
@@ -11,7 +11,7 @@ tcp = 1883
 ws = 8080
 
 [bigquery]
-project_id = "azubi-knowhow-building"
+project_id = "your-project-id"
 dataset_id = "mcloudttbq"
 table_id = "topic-log"
 credentials_path = "sa.key"

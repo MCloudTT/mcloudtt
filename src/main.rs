@@ -15,8 +15,10 @@ use std::{
     io::{self, BufReader},
     net::SocketAddr,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
+
+use tokio::sync::Mutex;
 
 use mqtt_v5::types::PublishPacket;
 use rustls_pemfile::{certs, rsa_private_keys};
@@ -47,22 +49,29 @@ lazy_static! {
 #[tokio::main]
 async fn main() -> Result {
     // Set up tracing_tree
+
     Registry::default()
         .with(EnvFilter::from_default_env())
         .with(
             HierarchicalLayer::new(2)
                 .with_targets(true)
-                .with_bracketed_fields(true),
+                .with_bracketed_fields(true)
+                .with_writer(std::io::stdout),
         )
         .init();
+
     info!("Starting MCloudTT!");
     main_loop().await
 }
 async fn main_loop() -> Result {
     let settings = &SETTINGS;
 
+    #[cfg(not(feature = "secure"))]
+    println!("WARNING: Running without TLS enabled! Only use this in a private network as the traffic is not encrypted and authentication is disabled!");
+
     let topics = Arc::new(Mutex::new(Topics::default()));
 
+    #[allow(unused_variables)]
     let (redis_sender, redis_receiver) = tokio::sync::mpsc::channel::<PublishPacket>(200);
 
     // Start redis client
@@ -85,20 +94,18 @@ async fn main_loop() -> Result {
     // MQTT over WebSockets
     let ws_listener = TcpListener::bind(format!("{LISTENER_ADDR}:{}", settings.ports.ws)).await?;
 
-    #[cfg(feature = "secure")]
-    {
-        //TLS
-        let certs = load_certs(Path::new(&settings.tls.certfile))?;
-        let mut keys = load_keys(Path::new(&settings.tls.keyfile))?;
+    //TLS
+    let certs = load_certs(Path::new(&settings.tls.certfile))?;
+    let mut keys = load_keys(Path::new(&settings.tls.keyfile))?;
 
-        let config = rustls::ServerConfig::builder()
-            .with_safe_defaults()
-            .with_no_client_auth()
-            .with_single_cert(certs, keys.remove(0))
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+    let config = rustls::ServerConfig::builder()
+        .with_safe_defaults()
+        .with_no_client_auth()
+        .with_single_cert(certs, keys.remove(0))
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
 
-        let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
-    }
+    let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
+
     // Start loop based on settings for websocket
     if settings.general.websocket {
         loop {
@@ -127,22 +134,18 @@ async fn main_loop() -> Result {
         }
     } else {
         loop {
-            if let Some(raw_tcp_stream) = listener.accept().await {
-                match raw_tcp_stream {
-                    Ok((stream, addr)) => {
-                        handle_new_connection(
-                            stream,
-                            addr,
-                            tls_acceptor.clone(),
-                            topics.clone(),
-                            redis_sender.clone(),
-                        )
-                        .await;
-                    }
-                    Err(e) => {
-                        info!("Error accepting TCP connection: {:?}", e);
-                    }
-                }
+            if let Ok(raw_tcp_stream) = listener.accept().await {
+                let (stream, addr) = raw_tcp_stream;
+                handle_new_connection(
+                    stream,
+                    addr,
+                    tls_acceptor.clone(),
+                    topics.clone(),
+                    redis_sender.clone(),
+                )
+                .await;
+            } else {
+                info!("Error accepting TCP connection");
             }
         }
     }
@@ -156,13 +159,20 @@ async fn handle_new_connection(
     redis_sender: tokio::sync::mpsc::Sender<PublishPacket>,
 ) {
     info!("Peer connected: {:?}", &addr);
-    if let Ok(stream) = tls_acceptor.accept(stream).await {
-        let (sender, _receiver) = tokio::sync::mpsc::channel::<Message>(200);
-        let mut client = Client::new(sender, topics, redis_sender);
-        tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
-    } else {
-        info!("Peer failed to connect: {:?}", addr);
+
+    let (sender, _receiver) = tokio::sync::mpsc::channel::<Message>(200);
+    let mut client = Client::new(sender, topics, redis_sender);
+
+    #[cfg(feature = "secure")]
+    {
+        if let Ok(stream) = tls_acceptor.accept(stream).await {
+            tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
+        } else {
+            info!("Peer failed to connect using tls: {:?}", addr);
+        }
     }
+    #[cfg(not(feature = "secure"))]
+    tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
 }
 
 fn load_certs(path: &Path) -> io::Result<Vec<Certificate>> {

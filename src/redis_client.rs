@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
 use crate::{topics::Topics, Arc};
-use std::{str::FromStr, sync::Mutex};
+use std::str::FromStr;
+use tokio::sync::Mutex;
 
 pub struct RedisClient {
     client: Client,
@@ -57,7 +58,7 @@ impl RedisClient {
                 }
                 Some(redis_message) = sub_thread_receiver.recv() => {
                     info!("Message received from redis and publish to mqtt broker");
-                    self.handle_message(redis_message);
+                    self.handle_message(redis_message).await;
                 }
             }
         }
@@ -76,14 +77,14 @@ impl RedisClient {
             serde_json::to_value(redis_message).unwrap().to_string(),
         );
     }
-    fn handle_message(&self, message: String) {
+    async fn handle_message(&self, message: String) {
         let redis_message: RedisMessage = serde_json::from_str(&message).unwrap();
         if redis_message.sender_id == self.sender_id {
             return;
         }
         let topic = Topic::from_str(&redis_message.topic).unwrap();
         let publish_packet = PublishPacket::new(topic, redis_message.payload.into());
-        match self.topics.lock().unwrap().publish(publish_packet) {
+        match self.topics.lock().await.publish(publish_packet) {
             Ok(_) => info!("Message received from redis and publish to topic"),
             Err(ref e) => error!("Could not send message to channel because of `{0}`", e),
         };

@@ -35,14 +35,26 @@ impl Topics {
     pub(crate) fn publish(&mut self, packet: PublishPacket) -> Result {
         let topic_name = packet.topic.topic_name().to_string();
         if let Some(channel) = self.0.get_mut(&topic_name) {
-            send_message(&mut channel.sender, Message::Publish(packet))?;
+            let _ = send_message(&mut channel.sender, Message::Publish(packet.clone()));
         } else {
             info!("Topic {:?} does not exist... Creating it", topic_name);
             let _ = self.add(Cow::Owned(topic_name.clone()))?;
             let channel = self.0.get_mut(&topic_name).unwrap();
-            send_message(&mut channel.sender, Message::Publish(packet))?;
+            let _ = send_message(&mut channel.sender, Message::Publish(packet.clone()));
+        }
+        if packet.retain {
+            info!("Retaining message for topic {:?}", &topic_name);
+            self.0.get_mut(&topic_name).unwrap().retained_message = Some(packet);
         }
         Ok(())
+    }
+    /// Check if the given topic has a retained message and if so, returns it
+    pub(crate) fn get_retained_message(&self, topic_name: &str) -> Option<PublishPacket> {
+        if let Some(channel) = self.0.get(topic_name) {
+            channel.retained_message.clone()
+        } else {
+            None
+        }
     }
 }
 pub(crate) fn send_message(sender: &mut Sender<Message>, message: Message) -> Result {
@@ -58,19 +70,17 @@ pub(crate) fn send_message(sender: &mut Sender<Message>, message: Message) -> Re
 #[derive(Clone, Debug, PartialEq)]
 pub enum Message {
     Publish(PublishPacket),
-    Subscribe(String),
-    Unsubscribe(String),
 }
 #[derive(Debug)]
 pub struct Channel {
     pub sender: BroadcastSender<Message>,
-    pub messages: Vec<String>,
+    pub retained_message: Option<PublishPacket>,
 }
 impl Channel {
     pub fn new(sender: BroadcastSender<Message>) -> Self {
         Self {
             sender,
-            messages: vec![],
+            retained_message: None,
         }
     }
 }
@@ -86,7 +96,7 @@ mod tests {
             let topic_name: Cow<String> = Cow::Owned("test".to_string());
             topics.add(topic_name.clone()).unwrap();
             assert_eq!(topics.0.len(), 1);
-            assert_eq!(topics.0.get("test").unwrap().messages.len(), 0);
+            assert!(topics.0.get("test").unwrap().retained_message.is_none());
             assert!(matches!(
                 topics.add(topic_name),
                 Err(MCloudError::TopicAlreadyExists(_))

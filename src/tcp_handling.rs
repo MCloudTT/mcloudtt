@@ -8,7 +8,7 @@ use mqtt_v5::decoder::decode_mqtt;
 use mqtt_v5::encoder::encode_mqtt;
 use mqtt_v5::topic::TopicFilter;
 use mqtt_v5::types::properties::{
-    MaximumPacketSize, MaximumQos, MessageExpiryInterval, ServerKeepAlive,
+    AssignedClientIdentifier, MaximumPacketSize, MaximumQos, MessageExpiryInterval, ServerKeepAlive,
 };
 use mqtt_v5::types::{
     ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, DisconnectReason, FinalWill,
@@ -16,21 +16,18 @@ use mqtt_v5::types::{
     SubscribeAckReason, SubscribePacket, UnsubscribeAckPacket, UnsubscribeAckReason,
     UnsubscribePacket,
 };
-use std::borrow::Cow;
-use std::collections::BTreeMap;
-use std::fmt::Debug;
-use std::future::Future;
-use std::marker::Unpin;
-use std::net::SocketAddr;
-use std::pin::Pin;
-use std::str;
-use std::sync::{Arc, Mutex};
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::{
+    borrow::Cow, collections::BTreeMap, fmt::Debug, future::Future, marker::Unpin, net::SocketAddr,
+    pin::Pin, str, sync::Arc, time::Duration,
+};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::Mutex;
 use tokio_rustls::server::TlsStream;
 use tracing::{debug, info};
 
@@ -42,6 +39,7 @@ pub struct Client {
     pub will: Option<FinalWill>,
     outgoing_messages: Vec<OutgoingMessage>,
     redis_sender: tokio::sync::mpsc::Sender<PublishPacket>,
+    id: AssignedClientIdentifier,
 }
 
 pub trait MCStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
@@ -92,6 +90,13 @@ impl Client {
             will: None,
             outgoing_messages: Vec::new(),
             redis_sender,
+            id: AssignedClientIdentifier(
+                thread_rng()
+                    .sample_iter(&Alphanumeric)
+                    .take(16)
+                    .map(char::from)
+                    .collect(),
+            ),
         }
     }
 
@@ -137,7 +142,7 @@ impl Client {
                         Ok(Message::Publish(packet)) => {
                             info!("Subscriber received new message");
 
-                            if &packet.qos == &QoS::AtLeastOnce {
+                            if packet.qos == QoS::AtLeastOnce {
                                 let outgoing_packet = OutgoingMessage {
                                     packet: packet.clone(),
                                     counter: packet.message_expiry_interval.clone().unwrap_or(MessageExpiryInterval(1)),
@@ -194,7 +199,7 @@ impl Client {
             peer, packet.payload, packet.topic
         );
         let mut reason_code = mqtt_v5::types::PublishAckReason::UnspecifiedError;
-        match self.topics.lock().unwrap().publish(packet.clone()) {
+        match self.topics.lock().await.publish(packet.clone()) {
             Ok(_) => {
                 reason_code = mqtt_v5::types::PublishAckReason::Success;
                 info!("Send message to topic")
@@ -264,17 +269,19 @@ impl Client {
                     filter: f,
                     level_count: _,
                 } => {
-                    sub_ack_packet
-                        .reason_codes
-                        .push(SubscribeAckReason::GrantedQoSZero);
-                    self.receivers.insert(
-                        f.clone(),
-                        self.topics
-                            .lock()
-                            .unwrap()
-                            .subscribe(Cow::Owned(f.clone()))
-                            .unwrap(),
-                    );
+                    {
+                        let mut topic_lock = self.topics.lock().await;
+                        sub_ack_packet
+                            .reason_codes
+                            .push(SubscribeAckReason::GrantedQoSZero);
+                        self.receivers
+                            .insert(f.clone(), topic_lock.subscribe(Cow::Owned(f.clone()))?);
+                        // If we have a retained message, send it to the client
+                        if let Some(retained_message) = topic_lock.get_retained_message(&f) {
+                            let send_packet = &Packet::Publish(retained_message);
+                            Self::write_to_stream(stream, send_packet).await?;
+                        }
+                    }
                     info!("Client {:?} subscribed to {:?}", peer, &f);
                 }
                 TopicFilter::Wildcard {
@@ -303,7 +310,7 @@ impl Client {
         let mut buf = BytesMut::new();
         encode_mqtt(packet, &mut buf, ProtocolVersion::V500);
         match stream.write_all(&buf).await {
-            Ok(e) => {
+            Ok(_) => {
                 info!("Written bytes");
                 Ok(())
             }
@@ -327,12 +334,12 @@ impl Client {
         .unwrap();
         info!("Received packet: {:?}", packet);
         match packet {
-            Some(Packet::Connect(p)) => self.handle_connect_packet(stream, &peer, &p).await,
+            Some(Packet::Connect(p)) => self.handle_connect_packet(stream, peer, &p).await,
             Some(Packet::PingRequest) => Self::handle_pingreq_packet(stream).await,
-            Some(Packet::Publish(p)) => self.handle_publish_packet(stream, &peer, &p).await,
-            Some(Packet::Subscribe(p)) => self.handle_subscribe_packet(stream, &peer, &p).await,
-            Some(Packet::Disconnect(p)) => self.handle_disconnect_packet(stream, &peer, &p).await,
-            Some(Packet::Unsubscribe(p)) => self.handle_unsubscribe_packet(stream, &peer, &p).await,
+            Some(Packet::Publish(p)) => self.handle_publish_packet(stream, peer, &p).await,
+            Some(Packet::Subscribe(p)) => self.handle_subscribe_packet(stream, peer, &p).await,
+            Some(Packet::Disconnect(p)) => self.handle_disconnect_packet(stream, peer, &p).await,
+            Some(Packet::Unsubscribe(p)) => self.handle_unsubscribe_packet(stream, peer, &p).await,
             Some(Packet::PublishAck(p)) => self.handle_publishack_packet(&p),
             _ => {
                 info!("No known packet-type");
@@ -368,7 +375,7 @@ impl Client {
             retain_available: None,
             maximum_packet_size: Some(MaximumPacketSize(1024)),
             // TODO: assign unique client_identifier
-            assigned_client_identifier: None,
+            assigned_client_identifier: Some(self.id.clone()),
             topic_alias_maximum: None,
             reason_string: None,
             user_properties: vec![],
@@ -515,7 +522,7 @@ mod tests {
         writer.write_all(&subscription_packet).await.unwrap();
         writer.flush().await.unwrap();
         sleep(Duration::from_millis(100)).await;
-        assert_eq!(1, topics.lock().unwrap().0.len());
+        assert_eq!(1, topics.lock().await.0.len());
     }
 
     #[tokio::test]
@@ -545,7 +552,7 @@ mod tests {
         writer.write_all(&subscription_packet).await.unwrap();
         writer.flush().await.unwrap();
         sleep(Duration::from_millis(20)).await;
-        assert_eq!(1, topics.lock().unwrap().0.len());
+        assert_eq!(1, topics.lock().await.0.len());
         let unsubscribe_packet = get_packet(&Packet::Unsubscribe(UnsubscribePacket::new(vec![
             TopicFilter::Concrete {
                 filter: "test".to_string(),
@@ -558,12 +565,15 @@ mod tests {
         assert!(matches!(
             topics
                 .lock()
-                .unwrap()
+                .await
                 .0
                 .get_mut("test")
                 .unwrap()
                 .sender
-                .send(Message::Unsubscribe("Hello".to_string())),
+                .send(Message::Publish(PublishPacket::new(
+                    Topic::from_str("test").unwrap(),
+                    Bytes::new()
+                ))),
             Err(tokio::sync::broadcast::error::SendError(_))
         ));
     }
@@ -573,7 +583,7 @@ mod tests {
         let topics = Arc::new(Mutex::new(Topics::default()));
         let mut receiver = topics
             .lock()
-            .unwrap()
+            .await
             .subscribe(Cow::Owned("test".to_string()))
             .unwrap();
         let mut client = generate_client(topics.clone());
@@ -609,7 +619,36 @@ mod tests {
         let msg = receiver.recv().await.unwrap();
         match msg {
             Message::Publish(msg) => assert_eq!("test", str::from_utf8(&msg.payload).unwrap()),
-            _ => panic!("Wrong message type"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_handle_connect_packet() {
+        let topics = Arc::new(Mutex::new(Topics::default()));
+        let mut client = generate_client(topics.clone());
+        let (listener, mut writer) = generate_tcp_stream_with_writer("1340".to_string()).await;
+        let connect = get_packet(&Packet::Connect(ConnectPacket::default()));
+        let (stream, addr) = listener.accept().await.unwrap();
+        tokio::spawn(async move {
+            client.handle_raw_tcp_stream(stream, addr).await.unwrap();
+        });
+        writer.write_all(&connect).await.unwrap();
+        writer.flush().await.unwrap();
+        sleep(Duration::from_millis(20)).await;
+        let mut buf = [0; 1024];
+        writer.try_read(&mut buf).unwrap();
+        assert!(!buf.is_empty());
+        let response_packet =
+            decode_mqtt(&mut BytesMut::from(buf.as_slice()), ProtocolVersion::V500)
+                .unwrap()
+                .unwrap();
+        let connack = if let Packet::ConnectAck(connack) = response_packet {
+            connack
+        } else {
+            panic!("Expected ConnectAck packet");
+        };
+        assert_eq!(connack.reason_code, ConnectReason::Success);
+        assert_ne!(connack.assigned_client_identifier, None);
+        assert_eq!(connack.maximum_qos.unwrap(), MaximumQos(QoS::AtLeastOnce));
     }
 }

@@ -25,11 +25,14 @@ chrono = { version = "0.4.23", optional = true }
 serde = { version = "1.0.130", features = ["derive"] }
 redis = { version = "0.22.3", features = ["bytes"], optional = true }
 serde_json = { version = "1.0", optional = true }
-rand = { version = "0.8.5", optional = true }
+rand = { version = "0.8.5" }
 
 [dev-dependencies]
 criterion = { version = "0.4.0", features = ["async_futures"]}
 mosquitto-rs = { git= "https://github.com/Nereuxofficial/mosquitto-rs" }
+clap = { version = "4.1.4", features = ["derive"] }
+csv = "1.1"
+paho-mqtt = "0.12.0"
 [[bench]]
 name = "publish"
 harness = false
@@ -39,4 +42,4 @@ default = ["secure"]
 secure = []
 docker = []
 bq_logging = ["dep:chrono", "dep:gcp-bigquery-client"]
-redis = ["dep:redis", "dep:rand", "dep:serde_json"]
+redis = ["dep:redis", "dep:serde_json"]

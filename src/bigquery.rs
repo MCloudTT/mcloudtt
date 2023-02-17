@@ -1,4 +1,3 @@
-use crate::config::BigQuery;
 use crate::SETTINGS;
 use gcp_bigquery_client::{
     model::table_data_insert_all_request::TableDataInsertAllRequest, Client,
