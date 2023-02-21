@@ -35,6 +35,7 @@ impl RedisClient {
                 .collect(),
         }
     }
+    /// Get a connection to redis instance
     async fn get_connection(&self) -> Connection {
         loop {
             match self.client.get_connection() {
@@ -46,6 +47,7 @@ impl RedisClient {
             }
         }
     }
+    /// Receive messages from redis pubsub channel "sync" and the broker
     pub async fn listen(&mut self) {
         let mut con = self.get_connection().await;
         let (sender, mut sub_thread_receiver) = tokio::sync::mpsc::channel::<String>(1024);
@@ -53,10 +55,12 @@ impl RedisClient {
 
         loop {
             tokio::select! {
+                // Receive messages from mqtt broker
                 Some(message) = self.receiver.recv() => {
                     info!("Message received from mqtt broker and publish to redis");
                     self.publish(message).await;
                 }
+                // Receive messages from redis pubsub channel "sync"
                 Some(redis_message) = sub_thread_receiver.recv() => {
                     info!("Message received from redis and publish to mqtt broker");
                     self.handle_message(redis_message).await;
@@ -64,6 +68,7 @@ impl RedisClient {
             }
         }
     }
+    /// Publish message on redis pubsub channel "sync"
     async fn publish(&self, message: PublishPacket) {
         let redis_message = RedisMessage {
             sender_id: self.sender_id.clone(),
@@ -73,8 +78,11 @@ impl RedisClient {
         };
         let mut con = self.get_connection().await;
         let redis_message_str = serde_json::to_value(redis_message).unwrap().to_string();
+        // TODO: use redis::cmd instead
         let _ = Commands::publish::<_, _, String>(&mut con, "sync", &redis_message_str);
+        // Save message in redis if it is a retained message with a key in format "retain:{topic}"
         if message.retain {
+            // TODO: use redis::cmd instead
             let _ = Commands::set::<_, _, String>(
                 &mut con,
                 format!("retain:{}", &message.topic.topic_name().to_owned()),
@@ -82,6 +90,7 @@ impl RedisClient {
             );
         }
     }
+    /// Handle a message received from redis
     async fn handle_message(&self, message: String) {
         let redis_message: RedisMessage = serde_json::from_str(&message).unwrap();
         if redis_message.sender_id == self.sender_id {
@@ -89,16 +98,19 @@ impl RedisClient {
         }
         let topic = Topic::from_str(&redis_message.topic).unwrap();
         let publish_packet = PublishPacket::new(topic, redis_message.payload.into());
+        // Publish message to mqtt broker
         match self.topics.lock().await.publish(publish_packet) {
             Ok(_) => info!("Message received from redis and publish to topic"),
             Err(ref e) => error!("Could not send message to channel because of `{0}`", e),
         };
     }
+    /// Receive messages from redis and send them to the mqtt broker
     async fn receive_from_redis(con: &mut Connection, sender: tokio::sync::mpsc::Sender<String>) {
         let mut con_sub = con.as_pubsub();
         con_sub.subscribe("sync").unwrap();
         loop {
             tokio::task::block_in_place(|| {
+                // Block until a message is received
                 let msg = con_sub.get_message().unwrap();
                 match msg.get_payload::<String>() {
                     Ok(msg) => {
@@ -113,26 +125,17 @@ impl RedisClient {
             });
         }
     }
-    async fn retrive_retained(&self, con: &mut Connection, topic: String) -> Option<PublishPacket> {
-        let mut con = self.get_connection().await;
-        let redis_message_str = redis::cmd("GET")
-            .arg(format!("retain:{}", topic))
-            .query::<String>(&mut con);
-        if let Ok(redis_message_str) = redis_message_str {
-            let redis_message: RedisMessage = serde_json::from_str(&redis_message_str).unwrap();
-            let topic = Topic::from_str(&redis_message.topic).unwrap();
-            let publish_packet = PublishPacket::new(topic, redis_message.payload.into());
-            return Some(publish_packet);
-        }
-        None
-    }
+    /// Get all retained messages from redis and add them to the topics
     pub async fn get_all_retained_messages(&self) {
         let mut con = self.get_connection().await;
+        // Get all keys in redis that start with "retain:"
+        // As this operation is performed only once at startup, it is not a problem to use KEYS
         let keys: Vec<String> = redis::cmd("KEYS")
             .arg("retain:*")
             .query::<Vec<String>>(&mut con)
             .unwrap();
         for key in keys {
+            // Get the message from redis and add it to topics
             let redis_message_str = redis::cmd("GET").arg(key).query::<String>(&mut con);
             if let Ok(redis_message_str) = redis_message_str {
                 let redis_message: RedisMessage = serde_json::from_str(&redis_message_str).unwrap();
@@ -156,4 +159,5 @@ pub(crate) struct RedisMessage {
     topic: String,
     payload: Vec<u8>,
     qos: u8,
+    // TODO: Add retain flag
 }
