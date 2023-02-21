@@ -1,4 +1,4 @@
-use mqtt_v5::{topic::Topic, types::PublishPacket};
+use mqtt_v5::{topic::Topic, types::PublishPacket, types::PublishPacketBuilder};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use redis::{Client, Commands, Connection};
@@ -75,6 +75,7 @@ impl RedisClient {
             topic: message.topic.topic_name().to_owned(),
             payload: message.payload.to_vec(),
             qos: message.qos as u8,
+            retain: message.retain,
         };
         let mut con = self.get_connection().await;
         let redis_message_str = serde_json::to_value(redis_message).unwrap().to_string();
@@ -96,8 +97,10 @@ impl RedisClient {
         if redis_message.sender_id == self.sender_id {
             return;
         }
-        let topic = Topic::from_str(&redis_message.topic).unwrap();
-        let publish_packet = PublishPacket::new(topic, redis_message.payload.into());
+        let publish_packet =
+            PublishPacketBuilder::new(redis_message.topic.clone(), redis_message.payload.into())
+                .with_retain(redis_message.retain)
+                .build();
         // Publish message to mqtt broker
         match self.topics.lock().await.publish(publish_packet) {
             Ok(_) => info!("Message received from redis and publish to topic"),
@@ -159,5 +162,5 @@ pub(crate) struct RedisMessage {
     topic: String,
     payload: Vec<u8>,
     qos: u8,
-    // TODO: Add retain flag
+    retain: bool,
 }
