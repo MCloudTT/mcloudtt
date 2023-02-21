@@ -68,7 +68,7 @@ impl RedisClient {
             }
         }
     }
-    /// Publish message on redis pubsub channel "sync"
+    /// Publish message on redis pubsub channel "sync" and save message in redis if it is a retained message
     async fn publish(&self, message: PublishPacket) {
         let redis_message = RedisMessage {
             sender_id: self.sender_id.clone(),
@@ -78,21 +78,24 @@ impl RedisClient {
             retain: message.retain,
         };
         let mut con = self.get_connection().await;
+        // TODO: make function for deserializing redis message; handle error
         let redis_message_str = serde_json::to_value(redis_message).unwrap().to_string();
-        // TODO: use redis::cmd instead
-        let _ = Commands::publish::<_, _, String>(&mut con, "sync", &redis_message_str);
+        // Publish message on redis pubsub channel "sync"
+        let _ = redis::cmd("PUBLISH")
+            .arg("sync")
+            .arg(&redis_message_str)
+            .query::<String>(&mut con);
         // Save message in redis if it is a retained message with a key in format "retain:{topic}"
         if message.retain {
-            // TODO: use redis::cmd instead
-            let _ = Commands::set::<_, _, String>(
-                &mut con,
-                format!("retain:{}", &message.topic.topic_name().to_owned()),
-                &redis_message_str,
-            );
+            let _ = redis::cmd("SET")
+                .arg(format!("retain:{}", &message.topic.topic_name().to_owned()))
+                .arg(&redis_message_str)
+                .query::<String>(&mut con);
         }
     }
     /// Handle a message received from redis
     async fn handle_message(&self, message: String) {
+        // TODO: make function for deserializing redis message; handle error
         let redis_message: RedisMessage = serde_json::from_str(&message).unwrap();
         if redis_message.sender_id == self.sender_id {
             return;
@@ -141,8 +144,10 @@ impl RedisClient {
             // Get the message from redis and add it to topics
             let redis_message_str = redis::cmd("GET").arg(key).query::<String>(&mut con);
             if let Ok(redis_message_str) = redis_message_str {
+                // TODO: make function for deserializing redis message; handle error
                 let redis_message: RedisMessage = serde_json::from_str(&redis_message_str).unwrap();
                 let topic = Topic::from_str(&redis_message.topic).unwrap();
+                // TODO: use PublishPacketBuilder instead
                 let publish_packet = PublishPacket::new(topic, redis_message.payload.into());
                 let mut topics = self.topics.lock().await;
                 let _ = topics.add(Cow::Owned(redis_message.topic.clone())).unwrap();
