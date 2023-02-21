@@ -84,6 +84,8 @@ async fn main_loop() -> Result {
             redis_receiver,
         );
 
+        redis_client.get_all_retained_messages().await;
+
         tokio::spawn(async move {
             redis_client.listen().await;
         });

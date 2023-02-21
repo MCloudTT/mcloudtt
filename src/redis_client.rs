@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
 use crate::{topics::Topics, Arc};
+use std::borrow::Cow;
 use std::str::FromStr;
 use tokio::sync::Mutex;
 
@@ -71,11 +72,15 @@ impl RedisClient {
             qos: message.qos as u8,
         };
         let mut con = self.get_connection().await;
-        let _ = Commands::publish::<_, _, String>(
-            &mut con,
-            "sync",
-            serde_json::to_value(redis_message).unwrap().to_string(),
-        );
+        let redis_message_str = serde_json::to_value(redis_message).unwrap().to_string();
+        let _ = Commands::publish::<_, _, String>(&mut con, "sync", &redis_message_str);
+        if message.retain {
+            let _ = Commands::set::<_, _, String>(
+                &mut con,
+                format!("retain:{}", &message.topic.topic_name().to_owned()),
+                &redis_message_str,
+            );
+        }
     }
     async fn handle_message(&self, message: String) {
         let redis_message: RedisMessage = serde_json::from_str(&message).unwrap();
@@ -106,6 +111,41 @@ impl RedisClient {
                     Err(e) => error!("Error getting message from redis: {:?}", e),
                 }
             });
+        }
+    }
+    async fn retrive_retained(&self, con: &mut Connection, topic: String) -> Option<PublishPacket> {
+        let mut con = self.get_connection().await;
+        let redis_message_str = redis::cmd("GET")
+            .arg(format!("retain:{}", topic))
+            .query::<String>(&mut con);
+        if let Ok(redis_message_str) = redis_message_str {
+            let redis_message: RedisMessage = serde_json::from_str(&redis_message_str).unwrap();
+            let topic = Topic::from_str(&redis_message.topic).unwrap();
+            let publish_packet = PublishPacket::new(topic, redis_message.payload.into());
+            return Some(publish_packet);
+        }
+        None
+    }
+    pub async fn get_all_retained_messages(&self) {
+        let mut con = self.get_connection().await;
+        let keys: Vec<String> = redis::cmd("KEYS")
+            .arg("retain:*")
+            .query::<Vec<String>>(&mut con)
+            .unwrap();
+        for key in keys {
+            let redis_message_str = redis::cmd("GET").arg(key).query::<String>(&mut con);
+            if let Ok(redis_message_str) = redis_message_str {
+                let redis_message: RedisMessage = serde_json::from_str(&redis_message_str).unwrap();
+                let topic = Topic::from_str(&redis_message.topic).unwrap();
+                let publish_packet = PublishPacket::new(topic, redis_message.payload.into());
+                let mut topics = self.topics.lock().await;
+                let _ = topics.add(Cow::Owned(redis_message.topic.clone())).unwrap();
+                let _ = topics
+                    .0
+                    .get_mut(&redis_message.topic.clone())
+                    .unwrap()
+                    .retained_message = Some(publish_packet);
+            }
         }
     }
 }
