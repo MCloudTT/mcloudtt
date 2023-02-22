@@ -331,7 +331,7 @@ impl Client {
             &mut BytesMut::from(packet.as_slice()),
             ProtocolVersion::V500,
         )
-        .unwrap();
+        .map_err(MCloudError::DecodePacketError)?;
         info!("Received packet: {:?}", packet);
         match packet {
             Some(Packet::Connect(p)) => self.handle_connect_packet(stream, peer, &p).await,

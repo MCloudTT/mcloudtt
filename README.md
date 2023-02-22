@@ -42,12 +42,13 @@ docker build -t mcloudtt .
 ```
 
 ## Feature Guide
-| Feature      | Description                                                                                              |
-|--------------|----------------------------------------------------------------------------------------------------------|
-| `docker`     | Enables the `docker` feature, which is as of now sets the right IP Address for the broker to listen on.  |
-| `bq_logging` | Enables logging to BigQuery. Requires an `sa.key` file                                                   |
-| `redis`      | Enables Redis as a backend. For distributed/Kubernetes setups                                            |
-| `secure`     | Enabled by default. Enables TLS and authentication via TLS. Disable only if you know what you are doing. |
+| Feature         | Description                                                                                              |
+|-----------------|----------------------------------------------------------------------------------------------------------|
+| `secure`        | Enabled by default. Enables TLS and authentication via TLS. Disable only if you know what you are doing. |
+| `docker`        | Enables the `docker` feature, which is as of now sets the right IP Address for the broker to listen on.  |
+| `bq_logging`    | Enables logging to BigQuery. Requires an `sa.key` file                                                   |
+| `redis`         | Enables Redis as a backend. For distributed/Kubernetes setups                                            |
+| `tokio_console` | Enables monitoring via the tokio console. Requires `RUSTFLAGS="--cfg tokio_unstable"`                    |
 
 ## Configuration
 The broker can be configured via a `config.toml` file. The default configuration is as follows:
