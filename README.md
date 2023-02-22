@@ -7,14 +7,17 @@ A cloud-native asynchronous MQTT V5 Broker written in Rust.
 [![issues - mcloudtt](https://img.shields.io/github/issues/MCloudTT/mcloudtt?style=flat-square)](https://github.com/MCloudTT/mcloudtt/issues)
 ![Commits/m](https://img.shields.io/github/commit-activity/m/McloudTT/mcloudtt?style=flat-square)
 
-
-<div align="center">
-
-
-
-
-
-</div>
+## Features
+- [x] MQTT V5
+- [x] Websocket
+- [x] TLS
+- [x] Authentication via TLS
+- [x] BigQuery Logging
+- [x] Redis Backend
+- [x] Docker
+- [x] Kubernetes
+- [ ] MQTT V3.1.1
+- [ ] MQTT V3
 
 ## Documentation
 
