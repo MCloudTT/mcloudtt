@@ -10,6 +10,7 @@ mod topics;
 
 use crate::topics::{Message, Topics};
 
+use std::str::FromStr;
 use std::{
     fs::File,
     io::{self, BufReader},
@@ -35,6 +36,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Registry
 use tracing_tree::HierarchicalLayer;
 
 use lazy_static::lazy_static;
+use tracing_subscriber::filter::Directive;
 
 #[cfg(feature = "docker")]
 const LISTENER_ADDR: &str = "0.0.0.0";
@@ -50,10 +52,16 @@ lazy_static! {
 async fn main() -> Result {
     // Set up tracing_tree
     #[cfg(feature = "tokio_console")]
-    console_subscriber::init();
-    #[cfg(not(feature = "tokio_console"))]
-    Registry::default()
-        .with(EnvFilter::from_default_env())
+    let console_layer = console_subscriber::spawn();
+    let registry = Registry::default();
+    #[cfg(feature = "tokio_console")]
+    let registry = registry.with(console_layer);
+    registry
+        .with(
+            EnvFilter::from_default_env()
+                .add_directive(Directive::from_str("tokio=trace")?)
+                .add_directive(Directive::from_str("mcloudtt=trace")?),
+        )
         .with(
             HierarchicalLayer::new(2)
                 .with_targets(true)
