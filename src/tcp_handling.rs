@@ -119,7 +119,7 @@ impl Client {
                             return Err(MCloudError::UnexpectedClientDisconnected(addr.to_string()));
                         },
                         Ok(_) => {
-                            info!("RECEIVERS: {:?}", self.receivers);
+                            dbg!("RECEIVERS: {:?}", self.receivers);
                             match self.handle_packet(&mut stream, &mut buf, &addr).await {
                                 Ok(_) => { },
                                 Err(_) => {
@@ -129,7 +129,7 @@ impl Client {
                             };
                         },
                         Err(e) => {
-                            info!("Error reading: {0}", e);
+                            dbg!("Error reading: {0}", e);
                             return Err(MCloudError::ClientError(addr.to_string()));
                         },
                     }
