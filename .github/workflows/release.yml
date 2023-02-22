@@ -37,9 +37,13 @@ jobs:
         if : ${{ runner.os == 'Linux' }}
         run: strip target/release/mcloudtt
 
-      - name: Copy binary Linux/MacOS
-        if: ${{ runner.os == 'Linux' || runner.os == 'macOS' }}
-        run: cp target/release/mcloudtt mcloudtt
+      - name: Copy binary Linux
+        if: ${{ runner.os == 'Linux'}}
+        run: cp target/release/mcloudtt mcloudtt-linux
+
+      - name: Copy binary MacOS
+        if: ${{ runner.os == 'macOS' }}
+        run: cp target/release/mcloudtt mcloudtt-macos
 
       - name: Copy binary Windows
         if: ${{ runner.os == 'Windows' }}
