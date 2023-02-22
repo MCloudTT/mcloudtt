@@ -49,7 +49,9 @@ lazy_static! {
 #[tokio::main]
 async fn main() -> Result {
     // Set up tracing_tree
-
+    #[cfg(feature = "tokio_console")]
+    console_subscriber::init();
+    #[cfg(not(feature = "tokio_console"))]
     Registry::default()
         .with(EnvFilter::from_default_env())
         .with(

@@ -6,7 +6,6 @@ authors = ["Nereuxofficial <nereux@tuta.io>", "mfloto <git@mfloto.com>"]
 description = "A cloud-native asynchronous MQTT broker written in Rust"
 repository = "https://github.com/MCloudTT/mcloudtt"
 license = "AGPL-3.0-or-later"
-license-file = "LICENSE"
 keywords = ["mqtt", "broker", "cloud", "rust", "kubernetes", "tokio", "rustls"]
 categories = ["network-programming::application"]
 readme = "README.md"
@@ -34,6 +33,7 @@ serde = { version = "1.0.130", features = ["derive"] }
 redis = { version = "0.22.3", features = ["bytes"], optional = true }
 serde_json = { version = "1.0", optional = true }
 rand = { version = "0.8.5" }
+console-subscriber = {version = "0.1.8", optional= true}
 
 [dev-dependencies]
 criterion = { version = "0.4.0", features = ["async_futures"]}
@@ -51,3 +51,4 @@ secure = []
 docker = []
 bq_logging = ["dep:chrono", "dep:gcp-bigquery-client"]
 redis = ["dep:redis", "dep:serde_json"]
+tokio_console = ["tokio/tracing",  "dep:console-subscriber", "tracing/max_level_debug", "tracing/release_max_level_warn"]

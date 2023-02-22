@@ -1,4 +1,6 @@
 use thiserror::Error;
+use tracing_subscriber::filter::ParseError;
+
 pub(crate) type Result<T = ()> = std::result::Result<T, MCloudError>;
 #[derive(Error, Debug)]
 pub enum MCloudError {
@@ -20,6 +22,10 @@ pub enum MCloudError {
     IOError(std::io::Error),
     #[error("Configuration Error: `{0}`")]
     ConfigurationError(config::ConfigError),
+    #[error("Decoding Packet Failed: `{0:?}`")]
+    DecodePacketError(mqtt_v5::types::DecodeError),
+    #[error("Tracing initializer Error: `{0}`")]
+    TracingInitializerError(ParseError),
 }
 
 macro_rules! impl_from {
@@ -35,5 +41,9 @@ macro_rules! impl_from {
 
 impl_from!(
     (std::io::Error, MCloudError::IOError),
-    (config::ConfigError, MCloudError::ConfigurationError)
+    (config::ConfigError, MCloudError::ConfigurationError),
+    (
+        tracing_subscriber::filter::ParseError,
+        MCloudError::TracingInitializerError
+    )
 );

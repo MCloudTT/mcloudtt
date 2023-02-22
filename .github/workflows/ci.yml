@@ -42,8 +42,11 @@ jobs:
         if: ${{ runner.os == 'Linux' }}
         run: cargo doc --no-deps --document-private-items --all-features
 
-      - name: Run build --release
-        run: cargo build --release
+      - name: Run build --release --all-features
+        run: cargo build --release --all-features
+
+      - name: Run build --release --no-default-features
+        run: cargo build --release --no-default-features
 
   rustfmt:
     runs-on: ubuntu-20.04
