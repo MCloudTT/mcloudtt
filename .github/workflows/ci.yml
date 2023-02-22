@@ -78,5 +78,5 @@ jobs:
           override: true
           components: clippy
 
-      - name: Run cargo clippy --package game --all-targets
-        run: cargo clippy --package game --all-targets
+      - name: Run cargo clippy --all-targets
+        run: cargo clippy --all-targets
