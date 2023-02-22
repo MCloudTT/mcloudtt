@@ -78,7 +78,6 @@ impl RedisClient {
             retain: message.retain,
         };
         let mut con = self.get_connection().await;
-        // TODO: make function for deserializing redis message; handle error
         let redis_message_str = serde_json::to_value(redis_message).unwrap().to_string();
         // Publish message on redis pubsub channel "sync"
         let _ = redis::cmd("PUBLISH")
@@ -95,7 +94,6 @@ impl RedisClient {
     }
     /// Handle a message received from redis
     async fn handle_message(&self, message: String) {
-        // TODO: make function for deserializing redis message; handle error
         let redis_message: RedisMessage = serde_json::from_str(&message).unwrap();
         if redis_message.sender_id == self.sender_id {
             return;
@@ -103,7 +101,8 @@ impl RedisClient {
         let publish_packet =
             PublishPacketBuilder::new(redis_message.topic.clone(), redis_message.payload.into())
                 .with_retain(redis_message.retain)
-                .build();
+                .build()
+                .unwrap();
         // Publish message to mqtt broker
         match self.topics.lock().await.publish(publish_packet) {
             Ok(_) => info!("Message received from redis and publish to topic"),
@@ -144,18 +143,24 @@ impl RedisClient {
             // Get the message from redis and add it to topics
             let redis_message_str = redis::cmd("GET").arg(key).query::<String>(&mut con);
             if let Ok(redis_message_str) = redis_message_str {
-                // TODO: make function for deserializing redis message; handle error
-                let redis_message: RedisMessage = serde_json::from_str(&redis_message_str).unwrap();
-                let topic = Topic::from_str(&redis_message.topic).unwrap();
-                // TODO: use PublishPacketBuilder instead
-                let publish_packet = PublishPacket::new(topic, redis_message.payload.into());
-                let mut topics = self.topics.lock().await;
-                let _ = topics.add(Cow::Owned(redis_message.topic.clone())).unwrap();
-                let _ = topics
-                    .0
-                    .get_mut(&redis_message.topic.clone())
-                    .unwrap()
-                    .retained_message = Some(publish_packet);
+                if let Ok(Some(redis_message)) =
+                    serde_json::from_str::<std::option::Option<RedisMessage>>(&redis_message_str)
+                {
+                    let topic = Topic::from_str(&redis_message.topic).unwrap();
+                    let publish_packet = PublishPacketBuilder::new(
+                        redis_message.topic.clone(),
+                        redis_message.payload.into(),
+                    )
+                    .build()
+                    .unwrap();
+                    let mut topics = self.topics.lock().await;
+                    let _ = topics.add(Cow::Owned(redis_message.topic.clone())).unwrap();
+                    let _ = topics
+                        .0
+                        .get_mut(&redis_message.topic.clone())
+                        .unwrap()
+                        .retained_message = Some(publish_packet);
+                }
             }
         }
     }
