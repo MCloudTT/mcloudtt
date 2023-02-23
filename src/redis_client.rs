@@ -1,7 +1,7 @@
 use mqtt_v5::{topic::Topic, types::PublishPacket, types::PublishPacketBuilder};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use redis::{Client, Commands, Connection};
+use redis::{Client, Commands, Connection, Msg};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
@@ -111,40 +111,42 @@ impl RedisClient {
     }
     /// Receive messages from redis and send them to the mqtt broker
     async fn receive_from_redis(redis_client: Client, sender: tokio::sync::mpsc::Sender<String>) {
-        //TODO: rework nested matches, etc.
         loop {
-            if let Ok(mut con) = redis_client.get_connection() {
-                let mut con_sub = con.as_pubsub();
-                match con_sub.subscribe("sync") {
-                    Ok(_) => {
-                        tokio::task::block_in_place(|| {
-                            // Block until a message is received
-                            if let Ok(msg) = con_sub.get_message() {
-                                match msg.get_payload::<String>() {
-                                    Ok(msg) => {
-                                        info!("Message received from redis: {:?}", &msg);
-                                        match sender.blocking_send(msg.clone()) {
-                                            Ok(_) => info!("Message sent to mqtt broker"),
-                                            Err(e) => {
-                                                error!(
-                                                    "Error sending message to mqtt broker: {:?}",
-                                                    e
-                                                )
-                                            }
-                                        }
-                                    }
-                                    Err(e) => error!("Error getting message from redis: {:?}", e),
-                                }
-                            } else {
-                                error!("Error in redis connection occurred");
-                            }
-                        });
-                    }
-                    Err(_) => error!("Error subscribing to redis channel"),
-                };
-            } else {
-                error!("Error connecting to redis");
+            let mut con = match redis_client.get_connection() {
+                Ok(con) => con,
+                Err(_) => {
+                    error!("Error connecting to redis");
+                    continue;
+                }
+            };
+
+            let mut con_sub = con.as_pubsub();
+            if let Err(_) = con_sub.subscribe("sync") {
+                error!("Error subscribing to redis channel");
+                continue;
             }
+
+            tokio::task::block_in_place(|| {
+                if let Ok(msg) = con_sub.get_message() {
+                    Self::handle_redis_message(msg, &sender);
+                } else {
+                    error!("Error in redis connection occurred");
+                }
+            });
+        }
+    }
+    /// Handle a message received from redis
+    fn handle_redis_message(msg: Msg, sender: &tokio::sync::mpsc::Sender<String>) {
+        match msg.get_payload::<String>() {
+            Ok(msg) => {
+                info!("Message received from redis: {:?}", &msg);
+                if let Err(e) = sender.blocking_send(msg.clone()) {
+                    error!("Error sending message to mqtt broker: {:?}", e);
+                    return;
+                }
+                info!("Message sent to mqtt broker");
+            }
+            Err(e) => error!("Error getting message from redis: {:?}", e),
         }
     }
     /// Get all retained messages from redis and add them to the topics
