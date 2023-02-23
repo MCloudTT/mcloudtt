@@ -49,9 +49,9 @@ impl RedisClient {
     }
     /// Receive messages from redis pubsub channel "sync" and the broker
     pub async fn listen(&mut self) {
-        let mut con = self.get_connection().await;
         let (sender, mut sub_thread_receiver) = tokio::sync::mpsc::channel::<String>(1024);
-        tokio::spawn(async move { Self::receive_from_redis(&mut con, sender).await });
+        let redis_client_clone = self.client.clone();
+        tokio::spawn(async move { Self::receive_from_redis(redis_client_clone, sender).await });
 
         loop {
             tokio::select! {
@@ -110,24 +110,41 @@ impl RedisClient {
         };
     }
     /// Receive messages from redis and send them to the mqtt broker
-    async fn receive_from_redis(con: &mut Connection, sender: tokio::sync::mpsc::Sender<String>) {
-        let mut con_sub = con.as_pubsub();
-        con_sub.subscribe("sync").unwrap();
+    async fn receive_from_redis(redis_client: Client, sender: tokio::sync::mpsc::Sender<String>) {
+        //TODO: rework nested matches, etc.
         loop {
-            tokio::task::block_in_place(|| {
-                // Block until a message is received
-                let msg = con_sub.get_message().unwrap();
-                match msg.get_payload::<String>() {
-                    Ok(msg) => {
-                        info!("Message received from redis: {:?}", &msg);
-                        match sender.blocking_send(msg.clone()) {
-                            Ok(_) => info!("Message sent to mqtt broker"),
-                            Err(e) => error!("Error sending message to mqtt broker: {:?}", e),
-                        }
+            if let Ok(mut con) = redis_client.get_connection() {
+                let mut con_sub = con.as_pubsub();
+                match con_sub.subscribe("sync") {
+                    Ok(_) => {
+                        tokio::task::block_in_place(|| {
+                            // Block until a message is received
+                            if let Ok(msg) = con_sub.get_message() {
+                                match msg.get_payload::<String>() {
+                                    Ok(msg) => {
+                                        info!("Message received from redis: {:?}", &msg);
+                                        match sender.blocking_send(msg.clone()) {
+                                            Ok(_) => info!("Message sent to mqtt broker"),
+                                            Err(e) => {
+                                                error!(
+                                                    "Error sending message to mqtt broker: {:?}",
+                                                    e
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Err(e) => error!("Error getting message from redis: {:?}", e),
+                                }
+                            } else {
+                                error!("Error in redis connection occurred");
+                            }
+                        });
                     }
-                    Err(e) => error!("Error getting message from redis: {:?}", e),
-                }
-            });
+                    Err(_) => error!("Error subscribing to redis channel"),
+                };
+            } else {
+                error!("Error connecting to redis");
+            }
         }
     }
     /// Get all retained messages from redis and add them to the topics
