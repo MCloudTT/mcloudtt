@@ -1,7 +1,9 @@
 use thiserror::Error;
+use tokio::sync::mpsc::error::SendError;
 use tracing_subscriber::filter::ParseError;
 
 pub(crate) type Result<T = ()> = std::result::Result<T, MCloudError>;
+type AnythingReally = Box<dyn std::error::Error + Send + Sync + 'static>;
 #[derive(Error, Debug)]
 pub enum MCloudError {
     #[error("Topic `{0}` already exists")]
@@ -26,6 +28,11 @@ pub enum MCloudError {
     DecodePacketError(mqtt_v5::types::DecodeError),
     #[error("Tracing initializer Error: `{0}`")]
     TracingInitializerError(ParseError),
+    #[error("Error in mpsc channel: `{0}`")]
+    MpscError(tokio::sync::mpsc::error::SendError<AnythingReally>),
+    #[cfg(feature = "redis")]
+    #[error("Error communicating with Redis: `{0}`")]
+    RedisError(redis::RedisError),
 }
 
 macro_rules! impl_from {
@@ -47,3 +54,11 @@ impl_from!(
         MCloudError::TracingInitializerError
     )
 );
+
+impl From<tokio::sync::mpsc::error::SendError<String>> for MCloudError {
+    fn from(value: SendError<String>) -> Self {
+        MCloudError::MpscError(tokio::sync::mpsc::error::SendError(Box::new(value)))
+    }
+}
+#[cfg(feature = "redis")]
+impl_from!((redis::RedisError, MCloudError::RedisError));

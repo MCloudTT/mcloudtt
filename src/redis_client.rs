@@ -1,10 +1,11 @@
 use mqtt_v5::{topic::Topic, types::PublishPacket, types::PublishPacketBuilder};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use redis::{Client, Commands, Connection};
+use redis::{Client, Commands, Connection, Msg};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
+use crate::error::MCloudError;
 use crate::{topics::Topics, Arc};
 use std::borrow::Cow;
 use std::str::FromStr;
@@ -49,9 +50,9 @@ impl RedisClient {
     }
     /// Receive messages from redis pubsub channel "sync" and the broker
     pub async fn listen(&mut self) {
-        let mut con = self.get_connection().await;
         let (sender, mut sub_thread_receiver) = tokio::sync::mpsc::channel::<String>(1024);
-        tokio::spawn(async move { Self::receive_from_redis(&mut con, sender).await });
+        let redis_client_clone = self.client.clone();
+        tokio::spawn(async move { Self::receive_from_redis(redis_client_clone, sender).await });
 
         loop {
             tokio::select! {
@@ -110,25 +111,43 @@ impl RedisClient {
         };
     }
     /// Receive messages from redis and send them to the mqtt broker
-    async fn receive_from_redis(con: &mut Connection, sender: tokio::sync::mpsc::Sender<String>) {
-        let mut con_sub = con.as_pubsub();
-        con_sub.subscribe("sync").unwrap();
+    async fn receive_from_redis(redis_client: Client, sender: tokio::sync::mpsc::Sender<String>) {
         loop {
+            // Get a connection to redis instance
+            let mut con = match redis_client.get_connection() {
+                Ok(con) => con,
+                Err(_) => {
+                    error!("Error connecting to redis (retrying in one second)");
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    continue;
+                }
+            };
+            // Subscribe to redis pubsub channel "sync"
+            let mut con_sub = con.as_pubsub();
+            if let Err(_) = con_sub.subscribe("sync") {
+                error!("Error subscribing to redis channel");
+                continue;
+            }
+            // Block until a message is received
             tokio::task::block_in_place(|| {
-                // Block until a message is received
-                let msg = con_sub.get_message().unwrap();
-                match msg.get_payload::<String>() {
-                    Ok(msg) => {
-                        info!("Message received from redis: {:?}", &msg);
-                        match sender.blocking_send(msg.clone()) {
-                            Ok(_) => info!("Message sent to mqtt broker"),
-                            Err(e) => error!("Error sending message to mqtt broker: {:?}", e),
-                        }
-                    }
-                    Err(e) => error!("Error getting message from redis: {:?}", e),
+                if let Ok(msg) = con_sub.get_message() {
+                    Self::handle_redis_message(msg, &sender).unwrap_or_else(|e| {
+                        error!("Error handling redis message: {0}", e);
+                    });
+                } else {
+                    error!("Error in redis connection occurred");
                 }
             });
         }
+    }
+    /// Handle a message received from redis
+    fn handle_redis_message(
+        msg: Msg,
+        sender: &tokio::sync::mpsc::Sender<String>,
+    ) -> Result<(), MCloudError> {
+        let message = msg.get_payload::<String>()?;
+        sender.blocking_send(message)?;
+        Ok(info!("Message sent to mqtt broker"))
     }
     /// Get all retained messages from redis and add them to the topics
     pub async fn get_all_retained_messages(&self) {
@@ -146,13 +165,13 @@ impl RedisClient {
                 if let Ok(Some(redis_message)) =
                     serde_json::from_str::<std::option::Option<RedisMessage>>(&redis_message_str)
                 {
-                    let topic = Topic::from_str(&redis_message.topic).unwrap();
                     let publish_packet = PublishPacketBuilder::new(
                         redis_message.topic.clone(),
                         redis_message.payload.into(),
                     )
                     .build()
                     .unwrap();
+                    // Add topic to topics
                     let mut topics = self.topics.lock().await;
                     let _ = topics.add(Cow::Owned(redis_message.topic.clone())).unwrap();
                     let _ = topics

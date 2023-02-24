@@ -299,7 +299,7 @@ impl Client {
         }
         let suback = Packet::SubscribeAck(sub_ack_packet);
 
-        // ackknowledge subscription
+        // acknowledge subscription
         Self::write_to_stream(stream, &suback).await
     }
 
@@ -374,7 +374,6 @@ impl Client {
             maximum_qos: Some(MaximumQos(QoS::AtLeastOnce)),
             retain_available: None,
             maximum_packet_size: Some(MaximumPacketSize(1024)),
-            // TODO: assign unique client_identifier
             assigned_client_identifier: Some(self.id.clone()),
             topic_alias_maximum: None,
             reason_string: None,
