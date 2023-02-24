@@ -131,7 +131,9 @@ impl RedisClient {
             // Block until a message is received
             tokio::task::block_in_place(|| {
                 if let Ok(msg) = con_sub.get_message() {
-                    Self::handle_redis_message(msg, &sender);
+                    Self::handle_redis_message(msg, &sender).unwrap_or_else(|e| {
+                        error!("Error handling redis message: {0}", e);
+                    });
                 } else {
                     error!("Error in redis connection occurred");
                 }
