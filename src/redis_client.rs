@@ -112,20 +112,22 @@ impl RedisClient {
     /// Receive messages from redis and send them to the mqtt broker
     async fn receive_from_redis(redis_client: Client, sender: tokio::sync::mpsc::Sender<String>) {
         loop {
+            // Get a connection to redis instance
             let mut con = match redis_client.get_connection() {
                 Ok(con) => con,
                 Err(_) => {
-                    error!("Error connecting to redis");
+                    error!("Error connecting to redis (retrying in one second)");
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                     continue;
                 }
             };
-
+            // Subscribe to redis pubsub channel "sync"
             let mut con_sub = con.as_pubsub();
             if let Err(_) = con_sub.subscribe("sync") {
                 error!("Error subscribing to redis channel");
                 continue;
             }
-
+            // Block until a message is received
             tokio::task::block_in_place(|| {
                 if let Ok(msg) = con_sub.get_message() {
                     Self::handle_redis_message(msg, &sender);
@@ -165,13 +167,13 @@ impl RedisClient {
                 if let Ok(Some(redis_message)) =
                     serde_json::from_str::<std::option::Option<RedisMessage>>(&redis_message_str)
                 {
-                    let topic = Topic::from_str(&redis_message.topic).unwrap();
                     let publish_packet = PublishPacketBuilder::new(
                         redis_message.topic.clone(),
                         redis_message.payload.into(),
                     )
                     .build()
                     .unwrap();
+                    // Add topic to topics
                     let mut topics = self.topics.lock().await;
                     let _ = topics.add(Cow::Owned(redis_message.topic.clone())).unwrap();
                     let _ = topics
