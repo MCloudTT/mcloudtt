@@ -21,7 +21,7 @@ lazy_static = "1.4.0"
 config = "0.13.3"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 futures-util = "0.3.25"
-mqtt-v5 = { git = "https://github.com/Nereuxofficial/mqtt-broker", package = "mqtt-v5", branch = "dev" }
+mqtt-v5 = { git = "https://github.com/MCloudTT/mqtt-broker", package = "mqtt-v5", branch = "dev" }
 bytes = "1"
 async-backtrace = "0.2"
 tracing-tree = "0.2.2"

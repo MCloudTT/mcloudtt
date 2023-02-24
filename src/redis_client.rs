@@ -5,6 +5,7 @@ use redis::{Client, Commands, Connection, Msg};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
+use crate::error::MCloudError;
 use crate::{topics::Topics, Arc};
 use std::borrow::Cow;
 use std::str::FromStr;
@@ -138,18 +139,13 @@ impl RedisClient {
         }
     }
     /// Handle a message received from redis
-    fn handle_redis_message(msg: Msg, sender: &tokio::sync::mpsc::Sender<String>) {
-        match msg.get_payload::<String>() {
-            Ok(msg) => {
-                info!("Message received from redis: {:?}", &msg);
-                if let Err(e) = sender.blocking_send(msg.clone()) {
-                    error!("Error sending message to mqtt broker: {:?}", e);
-                    return;
-                }
-                info!("Message sent to mqtt broker");
-            }
-            Err(e) => error!("Error getting message from redis: {:?}", e),
-        }
+    fn handle_redis_message(
+        msg: Msg,
+        sender: &tokio::sync::mpsc::Sender<String>,
+    ) -> Result<(), MCloudError> {
+        let message = msg.get_payload::<String>()?;
+        sender.blocking_send(message)?;
+        Ok(info!("Message sent to mqtt broker"))
     }
     /// Get all retained messages from redis and add them to the topics
     pub async fn get_all_retained_messages(&self) {
