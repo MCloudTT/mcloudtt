@@ -31,7 +31,7 @@ jobs:
         run: cargo install cargo-auditable
 
       - name: Run auditable build --release
-        run: cargo auditable build --release
+        run: cargo auditable build --release --no-default-features # TODO: remove --no-default-features
 
       - name: Strip Release
         if : ${{ runner.os == 'Linux' }}
