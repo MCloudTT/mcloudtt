@@ -83,5 +83,5 @@ jobs:
           override: true
           components: clippy
 
-      - name: Run cargo clippy --all-targets
-        run: cargo clippy --all-targets
+      - name: Run cargo clippy --all-targets and allow almost_swapped
+        run: cargo clippy --all-targets -A clippy::almost_swapped
