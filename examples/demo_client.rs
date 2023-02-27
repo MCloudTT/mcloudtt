@@ -3,6 +3,7 @@ use paho_mqtt as mqtt;
 use std::env;
 
 #[derive(Parser)]
+#[allow(clippy::almost_swapped)]
 struct Args {
     host: String,
     topic: String,
