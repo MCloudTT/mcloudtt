@@ -39,12 +39,13 @@ jobs:
       - name: Run cargo test w/ -D warnings
         if: ${{ runner.os == 'Linux' }}
         run: cargo test -- --test-threads=1
+
       - name: Run cargo doc
         if: ${{ runner.os == 'Linux' }}
         run: cargo doc --no-deps --document-private-items --all-features
 
-      - name: Run build --release --all-features
-        run: cargo build --release --all-features
+      - name: Run build --release --all-features --all-targets
+        run: cargo build --release --all-features --all-targets
 
       - name: Run build --release --no-default-features
         run: cargo build --release --no-default-features
