@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  release:
+    strategy:
+      matrix:
+        os: [ windows-2019, ubuntu-latest, macos-latest ]
+        toolchain: [ nightly ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Get Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.toolchain }}
+          override: true
+
+      - name: Use Rust Cache
+        if: ${{ runner.os == 'Linux' }}
+        uses: Swatinem/rust-cache@v2.0.1
+
+      - name: Install cargo-auditable
+        run: cargo install cargo-auditable
+
+      - name: Run auditable build --release
+        run: cargo auditable build --release --no-default-features # TODO: remove --no-default-features
+
+      - name: Strip Release
+        if : ${{ runner.os == 'Linux' }}
+        run: strip target/release/mcloudtt
+
+      - name: Copy binary Linux
+        if: ${{ runner.os == 'Linux'}}
+        run: cp target/release/mcloudtt mcloudtt-linux
+
+      - name: Copy binary MacOS
+        if: ${{ runner.os == 'macOS' }}
+        run: cp target/release/mcloudtt mcloudtt-macos
+
+      - name: Copy binary Windows
+        if: ${{ runner.os == 'Windows' }}
+        run: cp target/release/mcloudtt.exe mcloudtt.exe
+
+      - name: Upload Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            mcloudtt-linux
+            mcloudtt-macos
+            mcloudtt.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

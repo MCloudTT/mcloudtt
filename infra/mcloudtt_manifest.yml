@@ -85,4 +85,4 @@ spec:
     protocol: TCP
   selector:
     app: redis
-  type: LoadBalancer
+  type: ClusterIP

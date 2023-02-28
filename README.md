@@ -1,6 +1,31 @@
 # MCloudTT
+A cloud-native asynchronous MQTT V5 Broker written in Rust.
 
-A cloud-native asynchronous MQTT Broker written in Rust.
+![CI](https://img.shields.io/github/actions/workflow/status/McloudTT/mcloudtt/ci.yml?style=flat-square)
+[![GitHub tag](https://img.shields.io/github/tag/MCloudTT/mcloudtt?include_prereleases=&sort=semver&color=blue&style=flat-square)](https://github.com/MCloudTT/mcloudtt/releases/)
+[![License](https://img.shields.io/badge/License-AGPLv3-blue?style=flat-square)](#license)
+[![issues - mcloudtt](https://img.shields.io/github/issues/MCloudTT/mcloudtt?style=flat-square)](https://github.com/MCloudTT/mcloudtt/issues)
+![Commits/m](https://img.shields.io/github/commit-activity/m/McloudTT/mcloudtt?style=flat-square)
+
+## Features
+- [x] MQTT V5
+- [x] Websocket
+- [x] TLS
+- [x] Authentication via TLS
+- [x] BigQuery Logging
+- [x] Redis Backend
+- [x] Docker
+- [x] Kubernetes
+- [ ] MQTT V3.1.1
+- [ ] MQTT V3
+
+## Documentation
+
+<div align="center">
+
+[![view - Documentation](https://img.shields.io/badge/view-Documentation-blue?style=for-the-badge)](/docs/ "Go to project documentation")
+
+</div>
 
 ## Getting started
 Run `gen-keys.sh` to generate required keys and certificates in the certs folder.
@@ -20,12 +45,13 @@ docker build -t mcloudtt .
 ```
 
 ## Feature Guide
-| Feature      | Description                                                                                              |
-|--------------|----------------------------------------------------------------------------------------------------------|
-| `docker`     | Enables the `docker` feature, which is as of now sets the right IP Address for the broker to listen on.  |
-| `bq_logging` | Enables logging to BigQuery. Requires an `sa.key` file                                                   |
-| `redis`      | Enables Redis as a backend. For distributed/Kubernetes setups                                            |
-| `secure`     | Enabled by default. Enables TLS and authentication via TLS. Disable only if you know what you are doing. |
+| Feature         | Description                                                                                              |
+|-----------------|----------------------------------------------------------------------------------------------------------|
+| `secure`        | Enabled by default. Enables TLS and authentication via TLS. Disable only if you know what you are doing. |
+| `docker`        | Enables the `docker` feature, which is as of now sets the right IP Address for the broker to listen on.  |
+| `bq_logging`    | Enables logging to BigQuery. Requires an `sa.key` file                                                   |
+| `redis`         | Enables Redis as a backend. For distributed/Kubernetes setups                                            |
+| `tokio_console` | Enables monitoring via the tokio console. Requires `RUSTFLAGS="--cfg tokio_unstable"`                    |
 
 ## Configuration
 The broker can be configured via a `config.toml` file. The default configuration is as follows:
