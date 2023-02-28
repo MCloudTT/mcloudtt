@@ -19,6 +19,9 @@ A cloud-native asynchronous MQTT V5 Broker written in Rust.
 - [ ] MQTT V3.1.1
 - [ ] MQTT V3
 
+## Architecture overview
+![cluster_overview_dark](https://user-images.githubusercontent.com/60036186/221888422-4178ece7-0134-4fa1-ac89-67237565acf2.png)
+
 ## Documentation
 
 <div align="center">
