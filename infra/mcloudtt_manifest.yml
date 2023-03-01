@@ -16,7 +16,7 @@ spec:
         app: mcloudtt
     spec:
       containers:
-      - image: gcr.io/azubi-knowhow-building/mcloudtt
+      - image: YOUR_IMAGE_REGISTRY/mcloudtt
         name: mcloudtt
         imagePullPolicy: Always
         resources:
@@ -26,6 +26,31 @@ spec:
         ports:
           - containerPort: 1883
 status: {}
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bigquery
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bigquery
+  template:
+    metadata:
+      labels:
+        app: bigquery
+    spec:
+      containers:
+      - name: bigquery
+        image: YOUR_IMAGE_REGISTRY/mcloudtt-bq
+        imagePullPolicy: Always
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
 
 ---
 
