@@ -56,6 +56,8 @@ docker build -t mcloudtt .
 | `redis`         | Enables Redis as a backend. For distributed/Kubernetes setups                                            |
 | `tokio_console` | Enables monitoring via the tokio console. Requires `RUSTFLAGS="--cfg tokio_unstable"`                    |
 
+When deploying in a cluster, you can also use the [BigQuery-Adapter](https://github.com/MCloudTT/bigquery) instead of the broker-feature `bq_logging`.
+
 ## Configuration
 The broker can be configured via a `config.toml` file. The default configuration is as follows:
 ```toml
