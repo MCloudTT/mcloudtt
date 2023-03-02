@@ -29,7 +29,7 @@ use tokio::sync::broadcast::Receiver;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex;
 use tokio_rustls::server::TlsStream;
-use tracing::{debug, info};
+use tracing::{debug, info, trace};
 
 #[derive(Debug)]
 pub struct Client {
@@ -119,7 +119,7 @@ impl Client {
                             return Err(MCloudError::UnexpectedClientDisconnected(addr.to_string()));
                         },
                         Ok(_) => {
-                            dbg!("RECEIVERS: {:?}", &self.receivers);
+                            trace!("RECEIVERS: {:?}", &self.receivers);
                             match self.handle_packet(&mut stream, &mut buf, &addr).await {
                                 Ok(_) => { },
                                 Err(_) => {
@@ -129,7 +129,7 @@ impl Client {
                             };
                         },
                         Err(e) => {
-                            dbg!("Error reading: {0}", e);
+                            trace!("Error reading: {0}", e);
                             return Err(MCloudError::ClientError(addr.to_string()));
                         },
                     }

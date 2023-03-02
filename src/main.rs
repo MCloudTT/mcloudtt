@@ -20,6 +20,7 @@ use std::{
 };
 
 use tokio::sync::Mutex;
+use tokio::task::Builder;
 
 use mqtt_v5::types::PublishPacket;
 use rustls_pemfile::{certs, rsa_private_keys};
@@ -57,11 +58,7 @@ async fn main() -> Result {
     #[cfg(feature = "tokio_console")]
     let registry = registry.with(console_layer);
     registry
-        .with(
-            EnvFilter::from_default_env()
-                .add_directive(Directive::from_str("tokio=trace")?)
-                .add_directive(Directive::from_str("mcloudtt=trace")?),
-        )
+        .with(EnvFilter::from_default_env().add_directive(Directive::from_str("tokio=trace")?))
         .with(
             HierarchicalLayer::new(2)
                 .with_targets(true)
@@ -178,13 +175,17 @@ async fn handle_new_connection(
     #[cfg(feature = "secure")]
     {
         if let Ok(stream) = tls_acceptor.accept(stream).await {
-            tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
+            Builder::new()
+                .name(format!("Client {}", addr).as_str())
+                .spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
         } else {
             info!("Peer failed to connect using tls: {:?}", addr);
         }
     }
     #[cfg(not(feature = "secure"))]
-    tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
+    Builder::new()
+        .name(format!("Client {}", addr).as_str())
+        .spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
 }
 
 fn load_certs(path: &Path) -> io::Result<Vec<Certificate>> {
