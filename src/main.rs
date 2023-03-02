@@ -58,11 +58,7 @@ async fn main() -> Result {
     #[cfg(feature = "tokio_console")]
     let registry = registry.with(console_layer);
     registry
-        .with(
-            EnvFilter::from_default_env()
-                .add_directive(Directive::from_str("tokio=trace")?)
-                .add_directive(Directive::from_str("mcloudtt=trace")?),
-        )
+        .with(EnvFilter::from_default_env().add_directive(Directive::from_str("tokio=trace")?))
         .with(
             HierarchicalLayer::new(2)
                 .with_targets(true)
