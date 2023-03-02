@@ -16,8 +16,8 @@ A cloud-native asynchronous MQTT V5 Broker written in Rust.
 - [x] Redis Backend
 - [x] Docker
 - [x] Kubernetes
-- [ ] MQTT V3.1.1
-- [ ] MQTT V3
+- [ ] MQTT V3.1.1(maybe)
+- [ ] MQTT V3(not planned)
 
 ## Documentation
 
@@ -51,7 +51,7 @@ docker build -t mcloudtt .
 | `docker`        | Enables the `docker` feature, which is as of now sets the right IP Address for the broker to listen on.  |
 | `bq_logging`    | Enables logging to BigQuery. Requires an `sa.key` file                                                   |
 | `redis`         | Enables Redis as a backend. For distributed/Kubernetes setups                                            |
-| `tokio_console` | Enables monitoring via the tokio console. Requires `RUSTFLAGS="--cfg tokio_unstable"`                    |
+| `tokio_console` | Enables monitoring via the tokio console.                                                                |
 
 ## Configuration
 The broker can be configured via a `config.toml` file. The default configuration is as follows:
