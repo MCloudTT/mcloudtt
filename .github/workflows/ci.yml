@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, test-runner-*]
   pull_request:
     branches: [main, dev]
   merge_group:
@@ -14,7 +14,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [self-hsoted]
         toolchain: [stable, nightly]
     runs-on: ${{ matrix.os }}
     steps:
@@ -51,7 +51,7 @@ jobs:
         run: cargo build --release --no-default-features
 
   rustfmt:
-    runs-on: ubuntu-20.04
+    runs-on: self-hosted
     steps:
 
       - name: Checkout
@@ -69,7 +69,7 @@ jobs:
         run: cargo fmt --all -- --check
 
   clippy:
-    runs-on: ubuntu-20.04
+    runs-on: self-hosted
     steps:
 
       - name: Checkout
