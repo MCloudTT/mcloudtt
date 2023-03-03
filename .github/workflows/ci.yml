@@ -14,7 +14,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [self-hsoted]
+        os: [self-hosted]
         toolchain: [stable, nightly]
     runs-on: ${{ matrix.os }}
     steps:
