@@ -70,6 +70,7 @@ async fn main() -> Result {
     info!("Starting MCloudTT!");
     main_loop().await
 }
+
 async fn main_loop() -> Result {
     let settings = &SETTINGS;
 
@@ -104,8 +105,8 @@ async fn main_loop() -> Result {
     let ws_listener = TcpListener::bind(format!("{LISTENER_ADDR}:{}", settings.ports.ws)).await?;
 
     //TLS
-    let certs = load_certs(Path::new(&settings.tls.certfile))?;
-    let mut keys = load_keys(Path::new(&settings.tls.keyfile))?;
+    let certs = load_certs(Path::new(&settings.tls.certfile)).unwrap_or_default();
+    let mut keys = load_keys(Path::new(&settings.tls.keyfile)).unwrap_or_default();
 
     let config = rustls::ServerConfig::builder()
         .with_safe_defaults()
