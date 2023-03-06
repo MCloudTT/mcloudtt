@@ -105,8 +105,8 @@ async fn main_loop() -> Result {
     let ws_listener = TcpListener::bind(format!("{LISTENER_ADDR}:{}", settings.ports.ws)).await?;
 
     //TLS
-    let certs = load_certs(Path::new(&settings.tls.certfile)).unwrap_or_default();
-    let mut keys = load_keys(Path::new(&settings.tls.keyfile)).unwrap_or_default();
+    let certs = load_certs(Path::new(&settings.tls.certfile)).unwrap();
+    let mut keys = load_keys(Path::new(&settings.tls.keyfile)).unwrap();
 
     let config = rustls::ServerConfig::builder()
         .with_safe_defaults()
