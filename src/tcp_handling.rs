@@ -159,6 +159,7 @@ impl Client {
                 _ = tokio::time::sleep(Duration::from_secs((SETTINGS.general.timeout + 2).into())) => {
                     info!("Will delay interval has passed");
                     self.publish_will(&mut stream, &addr).await?;
+                    stream.shutdown().await?;
                 }
                 _ = tokio::time::sleep(Duration::from_secs(1)), if !self.outgoing_messages.is_empty() => {
                     for packet in self.outgoing_messages.iter_mut() {
