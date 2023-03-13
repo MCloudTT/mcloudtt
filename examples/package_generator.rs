@@ -1,8 +1,8 @@
 use bytes::{Bytes, BytesMut};
-use mqtt_v5::encoder::encode_mqtt;
-use mqtt_v5::topic::Topic;
+use mqtt_v5_fork::encoder::encode_mqtt;
+use mqtt_v5_fork::topic::Topic;
 
-use mqtt_v5::types::{Packet, PublishPacket, QoS};
+use mqtt_v5_fork::types::{Packet, PublishPacket, QoS};
 use std::str::FromStr;
 
 fn main() {

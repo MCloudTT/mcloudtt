@@ -22,7 +22,7 @@ use std::{
 use tokio::sync::Mutex;
 use tokio::task::Builder;
 
-use mqtt_v5::types::PublishPacket;
+use mqtt_v5_fork::types::PublishPacket;
 use rustls_pemfile::{certs, rsa_private_keys};
 use tokio::net::{TcpListener, TcpStream};
 
