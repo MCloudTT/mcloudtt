@@ -51,3 +51,4 @@ tokio_console = ["dep:console-subscriber"]
 [profile.release]
 strip = true
 lto = true
+overflow-checks = true
