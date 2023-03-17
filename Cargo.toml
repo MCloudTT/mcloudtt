@@ -11,10 +11,9 @@ categories = ["network-programming::application"]
 readme = "README.md"
 rust-version = "1.64"
 
-
 [dependencies]
 thiserror = "1.0"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1.25.0", features = ["full", "tracing"] }
 tokio-tungstenite = "0.18.0"
 tracing = "0.1.37"
 lazy_static = "1.4.0"

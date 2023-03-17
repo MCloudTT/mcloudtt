@@ -20,6 +20,7 @@ use std::{
 };
 
 use tokio::sync::Mutex;
+use tokio::task::Builder;
 
 use mqtt_v5_fork::types::PublishPacket;
 use rustls_pemfile::{certs, rsa_private_keys};
@@ -57,11 +58,7 @@ async fn main() -> Result {
     #[cfg(feature = "tokio_console")]
     let registry = registry.with(console_layer);
     registry
-        .with(
-            EnvFilter::from_default_env()
-                .add_directive(Directive::from_str("tokio=trace")?)
-                .add_directive(Directive::from_str("mcloudtt=trace")?),
-        )
+        .with(EnvFilter::from_default_env().add_directive(Directive::from_str("tokio=trace")?))
         .with(
             HierarchicalLayer::new(2)
                 .with_targets(true)
@@ -73,6 +70,7 @@ async fn main() -> Result {
     info!("Starting MCloudTT!");
     main_loop().await
 }
+
 async fn main_loop() -> Result {
     let settings = &SETTINGS;
 
@@ -107,8 +105,8 @@ async fn main_loop() -> Result {
     let ws_listener = TcpListener::bind(format!("{LISTENER_ADDR}:{}", settings.ports.ws)).await?;
 
     //TLS
-    let certs = load_certs(Path::new(&settings.tls.certfile))?;
-    let mut keys = load_keys(Path::new(&settings.tls.keyfile))?;
+    let certs = load_certs(Path::new(&settings.tls.certfile)).unwrap();
+    let mut keys = load_keys(Path::new(&settings.tls.keyfile)).unwrap();
 
     let config = rustls::ServerConfig::builder()
         .with_safe_defaults()
@@ -178,13 +176,17 @@ async fn handle_new_connection(
     #[cfg(feature = "secure")]
     {
         if let Ok(stream) = tls_acceptor.accept(stream).await {
-            tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
+            Builder::new()
+                .name(format!("Client {}", addr).as_str())
+                .spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
         } else {
             info!("Peer failed to connect using tls: {:?}", addr);
         }
     }
     #[cfg(not(feature = "secure"))]
-    tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
+    Builder::new()
+        .name(format!("Client {}", addr).as_str())
+        .spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
 }
 
 fn load_certs(path: &Path) -> io::Result<Vec<Certificate>> {

@@ -11,6 +11,9 @@ cargo-fuzz = true
 honggfuzz = "0.5.55"
 bytes = "1"
 mqtt-v5 = { git="https://github.com/Nereuxofficial/mqtt-broker", package="mqtt-v5" }
+tokio-stream = "0.1.12"
+tokio = { version = "1.12.0", features = ["full"] }
+mcloudtt = { path=".." }
 
 # Prevent this from interfering with workspaces
 [workspace]
@@ -22,5 +25,10 @@ debug = 1
 [[bin]]
 name = "fuzz_mqtt_v5"
 path = "fuzz_targets/fuzz_mqtt_v5.rs"
+test = true
+doc = false
+[[bin]]
+name = "fuzz_mcloudtt"
+path = "fuzz_targets/fuzz_mcloudtt.rs"
 test = true
 doc = false
