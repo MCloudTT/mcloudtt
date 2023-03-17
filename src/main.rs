@@ -10,7 +10,6 @@ mod topics;
 
 use crate::topics::{Message, Topics};
 
-use std::str::FromStr;
 use std::{
     fs::File,
     io::{self, BufReader},
@@ -28,6 +27,12 @@ use tokio::net::{TcpListener, TcpStream};
 
 use tokio_rustls::rustls::{self, Certificate, PrivateKey};
 use tracing::info;
+
+#[cfg(feature = "tokio_console")]
+use std::str::FromStr;
+#[cfg(feature = "tokio_console")]
+use tracing_subscriber::filter::Directive;
+#[cfg(feature = "tokio_console")]
 use tracing_subscriber::EnvFilter;
 
 use crate::config::Configuration;
@@ -37,7 +42,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Registry
 use tracing_tree::HierarchicalLayer;
 
 use lazy_static::lazy_static;
-use tracing_subscriber::filter::Directive;
 
 #[cfg(feature = "docker")]
 const LISTENER_ADDR: &str = "0.0.0.0";
@@ -56,9 +60,10 @@ async fn main() -> Result {
     let console_layer = console_subscriber::spawn();
     let registry = Registry::default();
     #[cfg(feature = "tokio_console")]
-    let registry = registry.with(console_layer);
+    let registry = registry
+        .with(console_layer)
+        .with(EnvFilter::from_default_env().add_directive(Directive::from_str("tokio=trace")?));
     registry
-        .with(EnvFilter::from_default_env().add_directive(Directive::from_str("tokio=trace")?))
         .with(
             HierarchicalLayer::new(2)
                 .with_targets(true)
