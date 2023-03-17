@@ -1,5 +1,5 @@
 use crate::error::{MCloudError, Result};
-use mqtt_v5::types::PublishPacket;
+use mqtt_v5_fork::types::PublishPacket;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use tokio::sync::broadcast::{channel, Receiver};

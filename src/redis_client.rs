@@ -1,4 +1,4 @@
-use mqtt_v5::{topic::Topic, types::PublishPacket, types::PublishPacketBuilder};
+use mqtt_v5_fork::{topic::Topic, types::PublishPacket, types::PublishPacketBuilder};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use redis::{Client, Commands, Connection, Msg};

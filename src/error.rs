@@ -25,7 +25,7 @@ pub enum MCloudError {
     #[error("Configuration Error: `{0}`")]
     ConfigurationError(config::ConfigError),
     #[error("Decoding Packet Failed: `{0:?}`")]
-    DecodePacketError(mqtt_v5::types::DecodeError),
+    DecodePacketError(mqtt_v5_fork::types::DecodeError),
     #[error("Tracing initializer Error: `{0}`")]
     TracingInitializerError(ParseError),
     #[error("Error in mpsc channel: `{0}`")]

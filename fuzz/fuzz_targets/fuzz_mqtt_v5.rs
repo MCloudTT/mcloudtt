@@ -2,8 +2,8 @@ extern crate core;
 
 use bytes::BytesMut;
 use honggfuzz::fuzz;
-use mqtt_v5::decoder::decode_mqtt;
-use mqtt_v5::types::ProtocolVersion;
+use mqtt_v5_fork::decoder::decode_mqtt;
+use mqtt_v5_fork::types::ProtocolVersion;
 
 fn main() {
     loop {

@@ -4,13 +4,13 @@ use crate::error::{MCloudError, Result};
 use crate::topics::{Message, Topics};
 use crate::SETTINGS;
 use bytes::BytesMut;
-use mqtt_v5::decoder::decode_mqtt;
-use mqtt_v5::encoder::encode_mqtt;
-use mqtt_v5::topic::TopicFilter;
-use mqtt_v5::types::properties::{
+use mqtt_v5_fork::decoder::decode_mqtt;
+use mqtt_v5_fork::encoder::encode_mqtt;
+use mqtt_v5_fork::topic::TopicFilter;
+use mqtt_v5_fork::types::properties::{
     AssignedClientIdentifier, MaximumPacketSize, MaximumQos, MessageExpiryInterval, ServerKeepAlive,
 };
-use mqtt_v5::types::{
+use mqtt_v5_fork::types::{
     ConnectAckPacket, ConnectPacket, ConnectReason, DisconnectPacket, DisconnectReason, FinalWill,
     Packet, ProtocolVersion, PublishAckPacket, PublishPacket, QoS, SubscribeAckPacket,
     SubscribeAckReason, SubscribePacket, UnsubscribeAckPacket, UnsubscribeAckReason,
@@ -198,10 +198,10 @@ impl Client {
             "{:?} published {:?} to {:?}",
             peer, packet.payload, packet.topic
         );
-        let mut reason_code = mqtt_v5::types::PublishAckReason::UnspecifiedError;
+        let mut reason_code = mqtt_v5_fork::types::PublishAckReason::UnspecifiedError;
         match self.topics.lock().await.publish(packet.clone()) {
             Ok(_) => {
-                reason_code = mqtt_v5::types::PublishAckReason::Success;
+                reason_code = mqtt_v5_fork::types::PublishAckReason::Success;
                 info!("Send message to topic")
             }
             Err(ref e) => info!("Could not send message to topic because of `{0}`", e),
@@ -462,8 +462,8 @@ impl Client {
 mod tests {
     use super::*;
     use bytes::Bytes;
-    use mqtt_v5::topic::Topic;
-    use mqtt_v5::types::SubscriptionTopic;
+    use mqtt_v5_fork::topic::Topic;
+    use mqtt_v5_fork::types::SubscriptionTopic;
     use std::str::FromStr;
     use std::time::Duration;
     use tokio::io::AsyncWriteExt;
