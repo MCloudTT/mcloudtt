@@ -51,4 +51,4 @@ tokio_console = ["tokio/tracing",  "dep:console-subscriber"]
 
 [profile.release]
 lto=true
-codegen_units=1
+codegen-units=1
