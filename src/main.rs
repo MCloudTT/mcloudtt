@@ -63,14 +63,7 @@ async fn main() -> Result {
     let registry = registry
         .with(console_layer)
         .with(EnvFilter::from_default_env().add_directive(Directive::from_str("tokio=trace")?));
-    registry
-        .with(
-            HierarchicalLayer::new(2)
-                .with_targets(true)
-                .with_bracketed_fields(true)
-                .with_writer(std::io::stdout),
-        )
-        .init();
+    registry.init();
 
     info!("Starting MCloudTT!");
     main_loop().await
