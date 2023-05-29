@@ -35,7 +35,7 @@ rand = { version = "0.8.5" }
 console-subscriber = {version = "0.1.8", optional= true}
 
 [dev-dependencies]
-criterion = { version = "0.4.0", features = ["async_futures"]}
+criterion = { version = "0.5.1", features = ["async_futures"]}
 clap = { version = "4.1.4", features = ["derive"] }
 csv = "1.1"
 paho-mqtt = "0.12.0"
