@@ -3,8 +3,8 @@ websocket = true
 timeout = 30
 
 [tls]
-certfile = "certs/broker/broker.crt"
-keyfile = "certs/broker/broker.key"
+certfile = "certs/server.crt"
+keyfile = "certs/server.key"
 
 [ports]
 tcp = 1883
