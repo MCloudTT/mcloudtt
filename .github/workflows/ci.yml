@@ -9,6 +9,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "--cfg tokio-unstable"
 
 jobs:
   build:
