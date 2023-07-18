@@ -32,7 +32,7 @@ serde = { version = "1.0.130", features = ["derive"] }
 redis = { version = "0.23.0", features = ["bytes"], optional = true }
 serde_json = { version = "1.0", optional = true }
 rand = { version = "0.8.5" }
-console-subscriber = {version = "0.1.8", optional= true}
+console-subscriber = {version = "0.1.10", optional= true}
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["async_futures"]}
@@ -51,3 +51,4 @@ tokio_console = ["tokio/tracing",  "dep:console-subscriber"]
 [profile.release]
 lto=true
 codegen-units=1
+strip=true
