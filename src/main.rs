@@ -209,15 +209,13 @@ async fn handle_new_connection(
     }
     #[cfg(not(feature = "secure"))]
     {
-        #[cfg(feature="tokio_console")]
+        #[cfg(feature = "tokio_console")]
         // FIXME: Macro or function for this. It is really annoying to spawn either a named task or unnamed task depending on the tokio_console feature flag
         Builder::new()
             .name(format!("Client {}", addr).as_str())
             .spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
-        #[cfg(not(feature="tokio_console"))]
-        tokio::spawn(
-                async move {client.handle_raw_tcp_stream(stream, addr).await}
-            );
+        #[cfg(not(feature = "tokio_console"))]
+        tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
     }
 }
 
