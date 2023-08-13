@@ -65,7 +65,7 @@ async fn main() -> Result {
         let registry = registry
             .with(console_layer)
             .with(EnvFilter::from_default_env().add_directive(Directive::from_str("tokio=trace")?));
-        registry.with(console_layer).init();
+        registry.init();
     }
     #[cfg(not(feature = "tokio_console"))]
     tracing_subscriber::fmt::init();
