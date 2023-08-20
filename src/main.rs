@@ -19,6 +19,7 @@ use std::{
 };
 
 use tokio::sync::Mutex;
+#[cfg(feature = "tokio_console")]
 use tokio::task::Builder;
 
 use mqtt_v5_fork::types::PublishPacket;
@@ -55,15 +56,19 @@ lazy_static! {
 
 #[tokio::main]
 async fn main() -> Result {
+    // TODO: Fix logging
     // Set up tracing_tree
     #[cfg(feature = "tokio_console")]
-    let console_layer = console_subscriber::spawn();
-    let registry = Registry::default();
-    #[cfg(feature = "tokio_console")]
-    let registry = registry
-        .with(console_layer)
-        .with(EnvFilter::from_default_env().add_directive(Directive::from_str("tokio=trace")?));
-    registry.init();
+    {
+        let console_layer = console_subscriber::spawn();
+        let registry = Registry::default();
+        let registry = registry
+            .with(console_layer)
+            .with(EnvFilter::from_default_env().add_directive(Directive::from_str("tokio=trace")?));
+        registry.init();
+    }
+    #[cfg(not(feature = "tokio_console"))]
+    tracing_subscriber::fmt::init();
 
     info!("Starting MCloudTT!");
     main_loop().await
@@ -102,9 +107,20 @@ async fn main_loop() -> Result {
     // MQTT over WebSockets
     let ws_listener = TcpListener::bind(format!("{LISTENER_ADDR}:{}", settings.ports.ws)).await?;
 
-    //TLS
-    let certs = load_certs(Path::new(&settings.tls.certfile)).unwrap();
-    let mut keys = load_keys(Path::new(&settings.tls.keyfile)).unwrap();
+    // Load TLS certificates
+    let certs = load_certs(Path::new(&settings.tls.certfile)).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Error loading TLS certificates: {:?}", e),
+        )
+    })?;
+    let mut keys = load_keys(Path::new(&settings.tls.keyfile)).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Error loading TLS keys: {:?}", e),
+        )
+    })?;
+    info!("Loaded TLS certificates");
 
     let config = rustls::ServerConfig::builder()
         .with_safe_defaults()
@@ -173,18 +189,34 @@ async fn handle_new_connection(
 
     #[cfg(feature = "secure")]
     {
-        if let Ok(stream) = tls_acceptor.accept(stream).await {
-            Builder::new()
-                .name(format!("Client {}", addr).as_str())
-                .spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
-        } else {
-            info!("Peer failed to connect using tls: {:?}", addr);
+        // Make this a match that prints the error
+        match tls_acceptor.accept(stream).await {
+            Ok(stream) => {
+                #[cfg(feature = "tokio_console")]
+                Builder::new()
+                    .name(format!("Client {}", addr).as_str())
+                    .spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
+                #[cfg(not(feature = "tokio_console"))]
+                tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
+            }
+            Err(e) => {
+                info!(
+                    "Peer failed to connect using tls: {:?} because of {e} ({e:?})",
+                    addr
+                );
+            }
         }
     }
     #[cfg(not(feature = "secure"))]
-    Builder::new()
-        .name(format!("Client {}", addr).as_str())
-        .spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
+    {
+        #[cfg(feature = "tokio_console")]
+        // FIXME: Macro or function for this. It is really annoying to spawn either a named task or unnamed task depending on the tokio_console feature flag
+        Builder::new()
+            .name(format!("Client {}", addr).as_str())
+            .spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
+        #[cfg(not(feature = "tokio_console"))]
+        tokio::spawn(async move { client.handle_raw_tcp_stream(stream, addr).await });
+    }
 }
 
 fn load_certs(path: &Path) -> io::Result<Vec<Certificate>> {

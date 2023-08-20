@@ -44,9 +44,7 @@ pub struct Client {
 
 pub trait MCStream: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
 
-impl MCStream for TlsStream<TcpStream> {}
-
-impl MCStream for TcpStream {}
+impl<T> MCStream for T where T: AsyncReadExt + AsyncWriteExt + Unpin + Debug {}
 
 struct ReceiverFuture<'a> {
     receiver: Vec<(&'a String, &'a Receiver<Message>)>,
