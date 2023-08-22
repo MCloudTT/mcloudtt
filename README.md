@@ -115,5 +115,8 @@ This project uses the `webpki` and `ring` crates by Brian Smith. For them the fo
 - ring https://github.com/briansmith/ring/blob/main/LICENSE
 - webpki https://github.com/briansmith/webpki/blob/main/LICENSE
 
+## Security
+For security issues, please refer to the [SECURITY.md](.github/SECURITY.md) file.
+
 ## Credits
 [BSchwind's MQTT Broker for the Package En/Decoding](https://github.com/bschwind/mqtt-broker)
