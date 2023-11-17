@@ -103,11 +103,15 @@ cd infra
 terraform apply
 ```
 
-### Deplying to cluster
+### Deploying to cluster
 ```bash
 gcloud container clusters get-credentials mcloudtt-dev-cluster --region REGION --project PROJECT_ID
 kubectl create -f mcloudtt_manifest.yml
 ```
+
+## Performance
+Performance currently is suboptimal. This is because all channels are behind a global Mutex.
+- [ ] Stop the reliance on global locks either via per-channel Locks or sharding
 
 ## License
 This project uses the `webpki` and `ring` crates by Brian Smith. For them the following license applies:
